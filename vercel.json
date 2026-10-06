@@ -8,7 +8,7 @@
       "functions": {
         "app/main.py": {
           "maxDuration": 60,
-          "includeFiles": "benchmarks/{results/local.json,results/neural.json,questions.json}",
+          "includeFiles": "{src/atlasrag/**,benchmarks/results/local.json,benchmarks/results/neural.json,benchmarks/questions.json}",
           "excludeFiles": "{apps/web/**,docs/screenshots/**,tests/**,.venv/**,data/**,.cursor/**,.agents/**}"
         }
       }

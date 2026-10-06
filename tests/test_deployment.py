@@ -1,3 +1,8 @@
+import os
+import shutil
+import subprocess
+import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -5,6 +10,49 @@ from fastapi.testclient import TestClient
 
 from atlasrag.api import create_app
 from atlasrag.core.config import Settings
+
+
+def test_hosted_bundle_imports_without_installed_project(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    shutil.copytree(root / "app", tmp_path / "app", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(
+        root / "src" / "atlasrag",
+        tmp_path / "src" / "atlasrag",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    script = """
+import importlib.util
+import runpy
+import sys
+sys.path.insert(0, sys.argv[1])
+assert importlib.util.find_spec('atlasrag') is None
+module = runpy.run_path(sys.argv[2])
+from fastapi.testclient import TestClient
+with TestClient(module['app']) as client:
+    response = client.get('/api/health')
+    assert response.status_code == 503
+    assert response.json()['error']['code'] == 'deployment_not_configured'
+"""
+    environment = {
+        name: value for name, value in os.environ.items() if not name.startswith("ATLAS_")
+    }
+    subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            script,
+            sysconfig.get_path("purelib"),
+            str(tmp_path / "app" / "main.py"),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
 
 
 def test_prefixed_api_auth_operations_and_openapi(tmp_path: Path) -> None:

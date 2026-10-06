@@ -95,6 +95,11 @@ credentials and neural embeddings; `http://qdrant:6333` is Docker-only.
 ## Troubleshooting a disconnected workspace
 
 The frontend can deploy successfully while the FastAPI service fails at startup.
+Vercel runtime logs also identified `ModuleNotFoundError: No module named
+'atlasrag'`: the dependency environment did not expose the repository's `src`
+package. The API function now explicitly bundles `src/atlasrag/**`, and its
+entrypoint resolves `src` relative to its own file before importing the backend.
+An isolated entrypoint test verifies this without an installed project package.
 Check `/api/health` before investigating browser CORS. Missing production settings
 previously caused `FUNCTION_INVOCATION_FAILED`; the hosted entrypoint now returns
 HTTP 503 with `deployment_not_configured` and missing variable **names**. It never
@@ -132,7 +137,7 @@ Verify `/research` refresh serves the SPA, `/assets/*` serves actual assets,
 `/api/system` is rejected, and authorized upload/poll/research/conversation paths
 work. Check `/api/docs` and `/api/openapi.json` with authorization as well.
 
-Local checks: 50 backend tests passed (one external integration test skipped), including prefixed paths, CORS, API-key authorization, production entrypoint
+Local checks: 51 backend tests passed (one external integration test skipped), including prefixed paths, CORS, API-key authorization, production entrypoint
 imports and monitoring label compatibility; Ruff and mypy passed, and the frontend production build passed.
 Vercel CLI 62.4.0 recognized both services and started the Vite service. The Python wheel was built and its API was exercised outside the source checkout.
 The configuration passed the official Vercel JSON schema. Full

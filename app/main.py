@@ -1,13 +1,18 @@
 """FastAPI entrypoint for Vercel Services."""
 
 import os
+import sys
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from atlasrag.api import create_app
-from atlasrag.core.config import Settings
+# Vercel installs dependencies separately from the repository's src-layout package.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from atlasrag.api import create_app  # noqa: E402
+from atlasrag.core.config import Settings  # noqa: E402
 
 
 def deployment_settings() -> Settings:
