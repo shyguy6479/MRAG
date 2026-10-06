@@ -1,0 +1,12 @@
+.git
+.env
+data
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+apps/web/dist
+benchmarks/results/*
+!benchmarks/results/local.json
+!benchmarks/results/neural.json
+experiments/results
+.venv

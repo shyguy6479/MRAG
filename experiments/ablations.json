@@ -1,0 +1,17 @@
+{
+  "seed": 42,
+  "retrieval_k": 5,
+  "repetitions": 3,
+  "pipelines": [
+    {"name":"Dense (LSA)","strategy":"dense"},
+    {"name":"BM25","strategy":"sparse"},
+    {"name":"Hybrid RRF","strategy":"hybrid"},
+    {"name":"Hybrid + lexical reranker","strategy":"hybrid_reranked"},
+    {"name":"Agentic","strategy":"agentic"},
+    {"name":"Fixed chunks","strategy":"agentic","chunking":"fixed"},
+    {"name":"Recursive chunks","strategy":"agentic","chunking":"recursive"},
+    {"name":"Rewrite off","strategy":"agentic","rewrite":false},
+    {"name":"Decomposition off","strategy":"agentic","decompose":false},
+    {"name":"Verification off","strategy":"agentic","verify":false}
+  ]
+}

@@ -1,0 +1,25 @@
+# Use with: docker compose -f docker-compose.yml -f docker-compose.neural.yml --profile neural up --build
+services:
+  api:
+    build:
+      args: {INSTALL_NEURAL: 'true'}
+    environment: &neural-env
+      ATLAS_DENSE_BACKEND: neural
+      ATLAS_VECTOR_BACKEND: qdrant
+      ATLAS_QDRANT_URL: http://qdrant:6333
+      ATLAS_EMBEDDING_REVISION: ${ATLAS_EMBEDDING_REVISION:?Copy pinned revision from configs/neural-models.json}
+      ATLAS_RERANKER: cross_encoder
+      ATLAS_RERANKER_REVISION: ${ATLAS_RERANKER_REVISION:?Copy pinned revision from configs/neural-models.json}
+      HF_HOME: /app/data/model-cache
+    volumes: [neural-models:/app/data/model-cache]
+    depends_on:
+      qdrant: {condition: service_started}
+  worker:
+    build:
+      args: {INSTALL_NEURAL: 'true'}
+    environment: *neural-env
+    volumes: [neural-models:/app/data/model-cache]
+    depends_on:
+      qdrant: {condition: service_started}
+volumes:
+  neural-models:

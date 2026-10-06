@@ -1,0 +1,102 @@
+name: atlasrag
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment: &backend-env
+    ATLAS_ENVIRONMENT: production
+    ATLAS_DATABASE_URL: postgresql+psycopg://atlas:${POSTGRES_PASSWORD:?Run python scripts/bootstrap.py}@postgres:5432/atlas
+    ATLAS_REDIS_URL: redis://redis:6379/0
+    ATLAS_API_KEY: ${ATLAS_API_KEY:?Run python scripts/bootstrap.py}
+    ATLAS_INGESTION_MODE: celery
+    ATLAS_ALLOWED_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+  restart: unless-stopped
+  init: true
+
+services:
+  postgres:
+    image: postgres:16.8-alpine
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_DB: atlas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python scripts/bootstrap.py}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U atlas -d atlas"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7.4.2-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory, 256mb, --maxmemory-policy, noeviction]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    profiles: [neural]
+    volumes: [qdrant-data:/qdrant/storage]
+    restart: unless-stopped
+  migrate:
+    <<: *backend
+    command: [alembic, upgrade, head]
+    restart: 'no'
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *backend
+    ports: [127.0.0.1:8000:8000]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  worker:
+    <<: *backend
+    command: [celery, -A, workers.tasks:app, worker, --loglevel=INFO, --concurrency=2]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+  scheduler:
+    <<: *backend
+    command: [celery, -A, workers.tasks:app, beat, --loglevel=INFO, --schedule=/tmp/celerybeat]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+  web:
+    build: {context: apps/web}
+    ports: [127.0.0.1:3000:80]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    command: [--config.file=/etc/prometheus/prometheus.yml]
+    volumes: [./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    ports: [127.0.0.1:9090:9090]
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run python scripts/bootstrap.py}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: [127.0.0.1:3001:3000]
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  qdrant-data:
+  grafana-data:

@@ -1,0 +1,47 @@
+{
+  "measured_at": "2026-10-04T12:48:34.939597+00:00",
+  "target": "http://127.0.0.1:8000",
+  "scope": "HTTP loopback, small authored corpus, mixed/warm caches, no LLM calls",
+  "limitations": "12 requests per level by default; not a capacity or tail-SLO estimate.",
+  "runs": [
+    {
+      "concurrency": 1,
+      "requests": 12,
+      "statuses": {
+        "200": 12
+      },
+      "duration_seconds": 0.05138041696045548,
+      "throughput_requests_per_second": 233.55201669997547,
+      "cache_hit_rate": 0.0,
+      "p50_ms": 4.309354000724852,
+      "p95_ms": 7.243359868880358,
+      "p99_ms": 9.46713833836839
+    },
+    {
+      "concurrency": 4,
+      "requests": 12,
+      "statuses": {
+        "200": 12
+      },
+      "duration_seconds": 0.021892000106163323,
+      "throughput_requests_per_second": 548.1454385988973,
+      "cache_hit_rate": 1.0,
+      "p50_ms": 6.645541463512927,
+      "p95_ms": 9.915083891246468,
+      "p99_ms": 10.132150400895625
+    },
+    {
+      "concurrency": 8,
+      "requests": 12,
+      "statuses": {
+        "200": 12
+      },
+      "duration_seconds": 0.022320290911011398,
+      "throughput_requests_per_second": 537.6274013561342,
+      "cache_hit_rate": 1.0,
+      "p50_ms": 11.630479013547301,
+      "p95_ms": 19.686948106391355,
+      "p99_ms": 20.195789647987112
+    }
+  ]
+}
