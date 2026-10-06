@@ -26,7 +26,12 @@ from atlasrag.workspace_routes import router as workspace_router
 logger = logging.getLogger("atlasrag.api")
 
 
-def create_app(settings: Settings | None = None, *, api_prefix: str = "") -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    api_prefix: str = "",
+    tolerate_startup_failure: bool = False,
+) -> FastAPI:
     if api_prefix and (not api_prefix.startswith("/") or api_prefix.endswith("/")):
         raise ValueError("api_prefix must start with / and have no trailing slash")
     config = settings or Settings()
@@ -35,10 +40,37 @@ def create_app(settings: Settings | None = None, *, api_prefix: str = "") -> Fas
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         configure_logging(config.log_level)
-        app.state.db = Database(config)
-        await asyncio.to_thread(app.state.db.initialize)
-        app.state.runtime = await asyncio.to_thread(Runtime, app.state.db, config, telemetry)
-        app.state.limiter = RateLimiter(app.state.runtime.cache, config.rate_limit_per_minute)
+        app.state.startup_error = None
+        stage = "database"
+        try:
+            app.state.db = Database(config)
+            await asyncio.to_thread(app.state.db.initialize)
+            stage = "runtime"
+            app.state.runtime = await asyncio.to_thread(Runtime, app.state.db, config, telemetry)
+            app.state.limiter = RateLimiter(app.state.runtime.cache, config.rate_limit_per_minute)
+        except Exception as exc:
+            if not tolerate_startup_failure:
+                raise
+            logger.error("startup_failed", extra={"exception_type": type(exc).__name__})
+            app.state.startup_error = {
+                "code": "storage_not_ready" if stage == "database" else "runtime_not_ready",
+                "message": (
+                    "The deployed API could not initialize PostgreSQL. Verify "
+                    "ATLAS_DATABASE_URL, database access and completed Alembic migrations."
+                    if stage == "database"
+                    else "The deployed API could not initialize its runtime. Verify Redis "
+                    "and the configured retrieval/generation providers in Vercel."
+                ),
+            }
+            try:
+                yield
+            finally:
+                if hasattr(app.state, "runtime"):
+                    await asyncio.to_thread(app.state.runtime.close)
+                if hasattr(app.state, "db"):
+                    await asyncio.to_thread(app.state.db.close)
+                telemetry.close()
+            return
         stop = asyncio.Event()
 
         async def poll_jobs() -> None:
@@ -94,6 +126,14 @@ def create_app(settings: Settings | None = None, *, api_prefix: str = "") -> Fas
         status = 500
         response: Response
         try:
+            if app.state.startup_error:
+                response = JSONResponse(
+                    status_code=503,
+                    content={"error": app.state.startup_error, "status": "not_ready"},
+                    headers={"Cache-Control": "no-store", "X-Request-ID": rid},
+                )
+                status = 503
+                return response
             with telemetry.tracer.start_as_current_span("http.request"):
                 public = {f"{api_prefix}{path}" for path in ("/health", "/ready", "/metrics")}
                 key = config.api_key.get_secret_value()

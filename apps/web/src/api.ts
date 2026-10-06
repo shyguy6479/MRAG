@@ -232,7 +232,9 @@ export async function api<T>(
     throw new ApiError(
       response.status === 401
         ? "Workspace key required. Update your API connection in Settings."
-        : detail || "The service could not complete this request.",
+        : detail || (response.headers.get("X-Vercel-Error") === "FUNCTION_INVOCATION_FAILED"
+          ? "The deployed API crashed during startup. Check Vercel runtime logs and backend environment variables."
+          : "The service could not complete this request."),
       response.status,
       response.headers.get("X-Request-ID") || undefined,
     );

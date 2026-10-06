@@ -92,7 +92,31 @@ pinned model revisions, accessible models and a separately qualified bundle size
 and cold-start budget. Qdrant, if enabled, needs a managed `ATLAS_QDRANT_URL`,
 credentials and neural embeddings; `http://qdrant:6333` is Docker-only.
 
-## Validation
+## Troubleshooting a disconnected workspace
+
+The frontend can deploy successfully while the FastAPI service fails at startup.
+Check `/api/health` before investigating browser CORS. Missing production settings
+previously caused `FUNCTION_INVOCATION_FAILED`; the hosted entrypoint now returns
+HTTP 503 with `deployment_not_configured` and missing variable **names**. It never
+returns secret values or reports a healthy service when setup is incomplete.
+
+In **Settings → Environment Variables**, configure `ATLAS_DATABASE_URL`,
+`ATLAS_REDIS_URL` and `ATLAS_API_KEY` for Production, then redeploy. Use hosted
+PostgreSQL and Redis URLs, not Docker service names or localhost. Run the database
+migrations and start the external worker as described above. Enter the workspace
+key privately in the MRAG Settings page after the API starts.
+
+If the API returns `storage_not_ready`, verify the database connection and run
+`alembic upgrade head`. If it returns `runtime_not_ready`, check Redis and any
+configured model providers. Startup errors are sanitized; API readiness remains
+unsuccessful until the service can actually initialize. Native local/Docker
+startup behavior is unchanged.
+
+The production project was inspected on 2026-10-06: Vercel showed **No Environment
+Variables Added**, and `/api/health` returned HTTP 500 before these changes.
+Provisioning production infrastructure is required in addition to deploying code.
+
+## Local verification
 
 Install the current Vercel CLI, `uv` (the Python builder uses `uv.lock`) and project dependencies, then configure the above
 variables for a dedicated test database/Redis/worker and run from the repository root:
@@ -108,7 +132,7 @@ Verify `/research` refresh serves the SPA, `/assets/*` serves actual assets,
 `/api/system` is rejected, and authorized upload/poll/research/conversation paths
 work. Check `/api/docs` and `/api/openapi.json` with authorization as well.
 
-Local checks: 47 backend tests passed, including prefixed paths, CORS, API-key authorization, production entrypoint
+Local checks: 50 backend tests passed (one external integration test skipped), including prefixed paths, CORS, API-key authorization, production entrypoint
 imports and monitoring label compatibility; Ruff and mypy passed, and the frontend production build passed.
 Vercel CLI 62.4.0 recognized both services and started the Vite service. The Python wheel was built and its API was exercised outside the source checkout.
 The configuration passed the official Vercel JSON schema. Full

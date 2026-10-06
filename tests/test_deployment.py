@@ -70,3 +70,71 @@ def test_vercel_entrypoint_import_without_local_env(monkeypatch: pytest.MonkeyPa
     assert settings.max_upload_bytes == 1048576
     entrypoint.app.state.telemetry.close()
     sys.modules.pop("app.main", None)
+
+
+def test_missing_vercel_configuration_returns_actionable_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+    import sys
+
+    for name in ("ATLAS_DATABASE_URL", "ATLAS_REDIS_URL", "ATLAS_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    sys.modules.pop("app.main", None)
+    module = importlib.import_module("app.main")
+    with TestClient(module.app) as client:
+        for path in ("/api/health", "/api/system", "/api/ready"):
+            response = client.get(path)
+            assert response.status_code == 503
+            body = response.json()
+            assert body["error"]["code"] == "deployment_not_configured"
+            assert set(body["missing_variables"]) == {
+                "ATLAS_DATABASE_URL",
+                "ATLAS_REDIS_URL",
+                "ATLAS_API_KEY",
+            }
+            assert response.headers["cache-control"] == "no-store"
+    sys.modules.pop("app.main", None)
+
+
+def test_invalid_configuration_never_exposes_credential_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+    import sys
+
+    monkeypatch.setenv("ATLAS_DATABASE_URL", "postgresql+psycopg://user:private-password@db/db")
+    monkeypatch.setenv("ATLAS_REDIS_URL", "rediss://user:private-redis-password@cache:6379/0")
+    monkeypatch.setenv("ATLAS_API_KEY", "private-but-too-short-key")
+    sys.modules.pop("app.main", None)
+    module = importlib.import_module("app.main")
+    with TestClient(module.app) as client:
+        response = client.get("/api/system")
+        assert response.status_code == 503
+        assert "private-password" not in response.text
+        assert "private-redis-password" not in response.text
+        assert "private-but-too-short-key" not in response.text
+    sys.modules.pop("app.main", None)
+
+
+def test_failed_database_startup_returns_503_instead_of_crashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atlasrag.core.storage import Database
+
+    def fail_initialize(self: Database) -> None:
+        raise RuntimeError("private-database-password")
+
+    monkeypatch.setattr(Database, "initialize", fail_initialize)
+    settings = Settings(
+        environment="test", database_url=f"sqlite:///{tmp_path}/failed.db", _env_file=None
+    )
+    with TestClient(
+        create_app(settings, api_prefix="/api", tolerate_startup_failure=True)
+    ) as client:
+        for path in ("/api/health", "/api/system", "/api/ready"):
+            response = client.get(path)
+            assert response.status_code == 503
+            assert response.json()["error"]["code"] == "storage_not_ready"
+            assert "private-database-password" not in response.text
+            assert "Alembic" in response.json()["error"]["message"]
