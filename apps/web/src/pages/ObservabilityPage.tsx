@@ -1,3 +1,4 @@
+import { grafanaUrl } from "../config";
 import { useState } from "react";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 import type { Recent } from "../api";
@@ -216,10 +217,10 @@ export default function ObservabilityPage() {
               Last sampled {updated?.toLocaleTimeString() || "Unavailable"} ·
               auto-refresh every 15 seconds
             </span>
-            <a href="http://127.0.0.1:3001" target="_blank" rel="noreferrer">
-              Grafana (requires Docker stack)
+            {grafanaUrl && <a href={grafanaUrl} target="_blank" rel="noreferrer">
+              Grafana
               <ArrowUpRight size={13} />
-            </a>
+            </a>}
           </div>
           <p className="subtle-note">
             Request metrics cover /chat, /query and /search. Histogram

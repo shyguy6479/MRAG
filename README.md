@@ -1,5 +1,7 @@
 # MRAG
 
+For the Vercel multi-service deployment, see [the deployment guide](docs/vercel.md).
+
 ### Production Agentic Knowledge & Research System
 
 **An evidence-first research workspace with explicit retrieval algorithms,

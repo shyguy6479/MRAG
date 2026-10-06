@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
   "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "pydantic-settings>=2.8,<3",
-  "sqlalchemy>=2.0,<3", "psycopg[binary]>=3.2,<4", "celery[redis]>=5.4,<6",
+  "sqlalchemy>=2.0,<3", "psycopg[binary]>=3.2,<4", "celery[redis]>=5.4,<6", "redis>=6,<7",
   "httpx>=0.28,<1", "numpy>=2.2,<3", "scikit-learn>=1.6,<2",
   "rank-bm25>=0.2.2,<0.3", "pypdf>=5,<7", "beautifulsoup4>=4.13,<5",
   "python-multipart>=0.0.20,<1", "prometheus-client>=0.21,<1",
@@ -43,3 +43,6 @@ exclude = ["apps/web", "migrations"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = ["integration: tests that use a running deployed stack"]
+
+[tool.vercel]
+entrypoint = "app.main:app"

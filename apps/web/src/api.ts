@@ -1,3 +1,4 @@
+import { apiBaseUrl } from "./config";
 export type DocumentInfo = {
   id: string;
   title: string;
@@ -213,7 +214,7 @@ export async function api<T>(
     headers.set("Content-Type", "application/json");
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, { ...options, headers });
+    response = await fetch(`${apiBaseUrl}${path}`, { ...options, headers });
   } catch (error) {
     if ((error as Error).name === "AbortError") throw error;
     throw new ApiError(

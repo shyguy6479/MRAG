@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/*.tsbuildinfo
+.venv
+.env
+.env.*
+!.env.example
+data
+.cursor
+.codex
+.agents
+.pytest_cache
+.mypy_cache
+.ruff_cache
+docs/screenshots

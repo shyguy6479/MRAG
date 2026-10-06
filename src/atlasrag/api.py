@@ -26,7 +26,9 @@ from atlasrag.workspace_routes import router as workspace_router
 logger = logging.getLogger("atlasrag.api")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, api_prefix: str = "") -> FastAPI:
+    if api_prefix and (not api_prefix.startswith("/") or api_prefix.endswith("/")):
+        raise ValueError("api_prefix must start with / and have no trailing slash")
     config = settings or Settings()
     telemetry = Telemetry(config.otlp_endpoint)
 
@@ -63,6 +65,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="MRAG",
+        docs_url=f"{api_prefix}/docs",
+        redoc_url=f"{api_prefix}/redoc",
+        openapi_url=f"{api_prefix}/openapi.json",
         version=__version__,
         lifespan=lifespan,
         description="Inspectable retrieval, bounded tools, grounded research.",
@@ -90,7 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response: Response
         try:
             with telemetry.tracer.start_as_current_span("http.request"):
-                public = {"/health", "/ready", "/metrics"}
+                public = {f"{api_prefix}{path}" for path in ("/health", "/ready", "/metrics")}
                 key = config.api_key.get_secret_value()
                 if key and request.url.path not in public and request.method != "OPTIONS":
                     if not secrets.compare_digest(request.headers.get("x-api-key", ""), key):
@@ -147,6 +152,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         finally:
             route = getattr(request.scope.get("route"), "path", "unmatched")
+            if api_prefix and route.startswith(f"{api_prefix}/"):
+                route = route[len(api_prefix) :]
             telemetry.requests.labels(route=route, status=str(status)).inc()
             telemetry.latency.labels(route=route).observe(perf_counter() - started)
             logger.info("request_completed")
@@ -166,11 +173,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
-    @app.get("/health", tags=["operations"])
+    @app.get(f"{api_prefix}/health", tags=["operations"])
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
-    @app.get("/ready", tags=["operations"])
+    @app.get(f"{api_prefix}/ready", tags=["operations"])
     async def ready(request: Request) -> JSONResponse:
         try:
             await asyncio.wait_for(asyncio.to_thread(request.app.state.db.ping), timeout=4)
@@ -191,10 +198,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content={"status": "not_ready"})
         return JSONResponse({"status": "ready"})
 
-    @app.get("/metrics", include_in_schema=False)
+    @app.get(f"{api_prefix}/metrics", include_in_schema=False)
     async def metrics() -> Response:
         return Response(generate_latest(telemetry.registry), media_type=CONTENT_TYPE_LATEST)
 
-    app.include_router(router)
-    app.include_router(workspace_router)
+    app.include_router(router, prefix=api_prefix)
+    app.include_router(workspace_router, prefix=api_prefix)
     return app
