@@ -120,6 +120,11 @@ startup behavior is unchanged.
 The production project was inspected on 2026-10-06: Vercel showed **No Environment
 Variables Added**, and `/api/health` returned HTTP 500 before these changes.
 Provisioning production infrastructure is required in addition to deploying code.
+After deploying the import fix, the live `/api/health` endpoint returned the
+expected HTTP 503 `deployment_not_configured` response listing the three missing
+variables; the research page displayed that same actionable message. The import
+crash is resolved. Research and ingestion remain unavailable until infrastructure
+and secrets are configured.
 
 ## Local verification
 
@@ -146,8 +151,10 @@ missing `uv` prerequisite was resolved using temporary validation tools. The CLI
 production Redis configuration. The external test database, Redis and worker
 still need to be configured before a live service test can pass.
 
-No Vercel deployment, hosted build or external infrastructure has been verified
-by adding this configuration. Provision the required infrastructure and variables before deploying a linked project.
+The hosted build and startup diagnostic response were verified on 2026-10-06.
+External infrastructure and end-to-end research/ingestion remain unverified because
+the production project has no environment variables configured. Provision the
+required infrastructure and variables, then redeploy and verify the full workflow.
 
 References: [services routing](https://vercel.com/docs/services/routing),
 [bindings](https://vercel.com/docs/services/bindings),
