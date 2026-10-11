@@ -12,15 +12,7 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from atlasrag.api import create_app  # noqa: E402
-from atlasrag.core.config import Settings  # noqa: E402
-
-
-def deployment_settings() -> Settings:
-    settings = Settings(environment="production", ingestion_mode="celery", _env_file=None)
-    if "ATLAS_ALLOWED_ORIGINS" not in os.environ:
-        settings.allowed_origins = []
-    settings.max_upload_bytes = min(settings.max_upload_bytes, 3 * 1024 * 1024)
-    return settings
+from atlasrag.core.hosting import deployment_settings  # noqa: E402
 
 
 def create_deployment_app() -> FastAPI:

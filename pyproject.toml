@@ -46,3 +46,6 @@ markers = ["integration: tests that use a running deployed stack"]
 
 [tool.vercel]
 entrypoint = "app.main:app"
+
+[[tool.vercel.subscribers]]
+entrypoint = "workers.vercel_tasks:app"

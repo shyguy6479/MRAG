@@ -19,6 +19,7 @@ from atlasrag.core.models import (
     QueryResponse,
 )
 from atlasrag.core.storage import JobRow, MessageRow
+from atlasrag.ingestion.dispatch import dispatch
 
 router = APIRouter()
 logger = logging.getLogger("atlasrag.routes")
@@ -26,12 +27,20 @@ logger = logging.getLogger("atlasrag.routes")
 
 @router.get("/documents", response_model=list[DocumentInfo], tags=["documents"])
 async def documents(request: Request) -> list[DocumentInfo]:
-    return await asyncio.to_thread(request.app.state.db.documents)
+    result = await asyncio.to_thread(request.app.state.db.documents)
+    if request.app.state.settings.ingestion_mode == "vercel" and any(
+        item.status in {"queued", "processing"} for item in result
+    ):
+        await asyncio.to_thread(dispatch, request.app.state.runtime, recover=True)
+    return result
 
 
 @router.post("/documents", response_model=DocumentInfo, status_code=202, tags=["documents"])
 async def create_document(data: DocumentCreate, request: Request) -> DocumentInfo:
-    return await asyncio.to_thread(request.app.state.runtime.ingestion.submit, data)
+    result = await asyncio.to_thread(request.app.state.runtime.ingestion.submit, data)
+    if request.app.state.settings.ingestion_mode == "vercel":
+        await asyncio.to_thread(dispatch, request.app.state.runtime)
+    return result
 
 
 @router.post("/documents/upload", response_model=DocumentInfo, status_code=202, tags=["documents"])
@@ -56,7 +65,7 @@ async def upload(
                 raise InvalidInput("invalid UTF-8") from exc
             if b"\x00" in raw:
                 raise InvalidInput("binary upload rejected")
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             request.app.state.runtime.ingestion.submit_bytes,
             name[:250],
             raw,
@@ -64,6 +73,9 @@ async def upload(
             name,
             chunking,
         )
+        if settings.ingestion_mode == "vercel":
+            await asyncio.to_thread(dispatch, request.app.state.runtime)
+        return result
     finally:
         await file.close()
 

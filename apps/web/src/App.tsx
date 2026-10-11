@@ -87,7 +87,7 @@ function Workspace() {
               loading={research.loading}
               pending={research.pending}
               elapsed={research.elapsed}
-              error={research.error}
+              error={research.error === error ? "" : research.error}
               onHome={newResearch}
               onDocument={setDocument}
               onSearch={explore}
@@ -96,7 +96,7 @@ function Workspace() {
             />
           ) : (
             <>
-              {research.error && (
+              {research.error && research.error !== error && (
                 <div className="page-error">
                   <ErrorState message={research.error} />
                 </div>

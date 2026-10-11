@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     api_key: SecretStr = SecretStr("")
     allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
-    ingestion_mode: Literal["local", "celery"] = "local"
+    ingestion_mode: Literal["local", "celery", "vercel"] = "local"
     dense_backend: Literal["lsa", "neural"] = "lsa"
     vector_backend: Literal["memory", "qdrant"] = "memory"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     grounding_threshold: float = Field(default=0.65, ge=0, le=1)
     otlp_endpoint: str | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def use_psycopg_driver(cls, value: str) -> str:
+        # Managed PostgreSQL integrations supply standard PostgreSQL URLs.
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
 
     @model_validator(mode="after")
     def validate_combinations(self) -> Self:

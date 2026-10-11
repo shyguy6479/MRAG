@@ -113,7 +113,7 @@ def test_vercel_entrypoint_import_without_local_env(monkeypatch: pytest.MonkeyPa
     assert "/api/chat" in entrypoint.app.openapi()["paths"]
     settings = entrypoint.app.state.settings
     assert settings.environment == "production"
-    assert settings.ingestion_mode == "celery"
+    assert settings.ingestion_mode == "vercel"
     assert settings.allowed_origins == []
     assert settings.max_upload_bytes == 1048576
     entrypoint.app.state.telemetry.close()

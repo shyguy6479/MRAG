@@ -40,26 +40,35 @@ declare a four-field binding on that actual caller and consume it in the functio
 
 ## Required external infrastructure
 
-This configuration deploys the two existing HTTP services. PostgreSQL, Redis and
-Celery are external infrastructure, not localhost or Docker Compose containers
-started by Vercel. A continuously running worker with Celery beat is required:
+This configuration deploys two HTTP services and one private queue subscriber.
+PostgreSQL and Redis are managed services, not localhost or Docker containers.
+Use Neon Free for PostgreSQL and Upstash Free for Redis. Connect integrations to
+Production only with the `ATLAS` variable prefix. Standard `postgresql://` URLs
+from Neon are normalized to the project's declared psycopg driver automatically.
+
+Vercel's hosted entrypoint selects `ingestion_mode=vercel`. The Celery subscriber
+`workers.vercel_tasks:app` uses Vercel Queues and runs only when a job arrives;
+it requires no separate always-on worker host. Uploads are committed to PostgreSQL
+before notifying the queue. Each invocation processes one leased job and wakes
+the next. Active document polling recovers jobs if publishing failed, throttled
+to once per 30 seconds through Redis. If no browser is polling after a publish
+failure, that job waits for the next document-list request. Late acknowledgments
+allow Vercel to redeliver interrupted tasks after their queue lease expires.
+No public rewrite or HTTP service binding is needed for the private subscriber.
+Redis remains required for shared caching and rate limits.
+
+The existing Docker deployment still uses `ingestion_mode=celery` with its
+separate worker and scheduler. For a traditional worker outside Vercel, use:
 
 ```sh
 celery -A workers.tasks worker --beat --loglevel=INFO
 ```
 
-Use the same MRAG code version, database and Redis on the worker. Its durable
-job poller handles uploads and lease recovery; no HTTP service binding is needed
-because the API and worker communicate through PostgreSQL and Redis. This worker
-is not a third Vercel service in this configuration. Its host/provider
-must be chosen before deployment. This two-service HTTP deployment does not
-replace the existing Celery worker with a serverless background loop.
-
-Set these environment variables securely in Vercel and on the external worker:
+Set these environment variables securely in Vercel:
 
 ```dotenv
 ATLAS_ENVIRONMENT=production
-ATLAS_INGESTION_MODE=celery
+ATLAS_INGESTION_MODE=vercel
 ATLAS_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DATABASE?sslmode=require
 ATLAS_REDIS_URL=rediss://USER:PASSWORD@HOST:PORT/0
 ATLAS_API_KEY=YOUR_RANDOM_KEY_OF_AT_LEAST_32_CHARACTERS
@@ -72,7 +81,7 @@ ATLAS_MAX_UPLOAD_BYTES=3145728
 ```
 
 Replace placeholders; do not commit credentials. Set the required variables for Production and Preview environments. The Vercel entrypoint explicitly
-requires production settings and Celery ingestion and caps uploads at 3 MiB (or a smaller configured limit).
+requires production settings and queue ingestion and caps uploads at 3 MiB (or a smaller configured limit).
 It will reject missing durable infrastructure or a missing workspace key rather
 than start with ephemeral SQLite and a process-local background poller.
 The API key is entered in the UI Settings and held in browser session storage;
@@ -108,7 +117,7 @@ returns secret values or reports a healthy service when setup is incomplete.
 In **Settings → Environment Variables**, configure `ATLAS_DATABASE_URL`,
 `ATLAS_REDIS_URL` and `ATLAS_API_KEY` for Production, then redeploy. Use hosted
 PostgreSQL and Redis URLs, not Docker service names or localhost. Run the database
-migrations and start the external worker as described above. Enter the workspace
+migrations and deploy the private queue subscriber described above. Enter the workspace
 key privately in the MRAG Settings page after the API starts.
 
 If the API returns `storage_not_ready`, verify the database connection and run
@@ -142,7 +151,7 @@ Verify `/research` refresh serves the SPA, `/assets/*` serves actual assets,
 `/api/system` is rejected, and authorized upload/poll/research/conversation paths
 work. Check `/api/docs` and `/api/openapi.json` with authorization as well.
 
-Local checks: 51 backend tests passed (one external integration test skipped), including prefixed paths, CORS, API-key authorization, production entrypoint
+Local checks: 56 backend tests passed (one external integration test skipped), including prefixed paths, CORS, API-key authorization, production entrypoint
 imports and monitoring label compatibility; Ruff and mypy passed, and the frontend production build passed.
 Vercel CLI 62.4.0 recognized both services and started the Vite service. The Python wheel was built and its API was exercised outside the source checkout.
 The configuration passed the official Vercel JSON schema. Full
@@ -173,7 +182,7 @@ References: [services routing](https://vercel.com/docs/services/routing),
    dependency installation and exports `app.main:app`; no uvicorn start command
    or Docker command is needed in Vercel's dashboard.
 6. Add the required secure environment variables below, then apply migrations
-   and run the external worker against the same production services. Use a
+   and deploy the private queue subscriber against the same production services. Use a
    separate database/Redis/worker configuration for Preview deployments.
 7. Deploy; Vercel routes `/api/*` to FastAPI and other paths to Vite. Check
    `/api/ready`, then enter your workspace key in MRAG Settings and verify
@@ -183,9 +192,8 @@ References: [services routing](https://vercel.com/docs/services/routing),
    cross-origin access; same-origin `/api` requests still work. Never use `*`.
 
 Minimal secure variables to supply: `ATLAS_DATABASE_URL`, `ATLAS_REDIS_URL`,
-`ATLAS_API_KEY`. The entrypoint selects production and Celery modes automatically.
-Set `ATLAS_ENVIRONMENT=production` and `ATLAS_INGESTION_MODE=celery` on the external
-worker too. `ATLAS_ALLOWED_ORIGINS` is a JSON array of exact origins, with no
+`ATLAS_API_KEY`. The entrypoint selects production and Vercel queue modes automatically.
+`ATLAS_ALLOWED_ORIGINS` is a JSON array of exact origins, with no
 trailing slash or path, such as `["https://mrag.example.com"]`.
 
 The recommended baseline profile variables in the earlier dotenv block avoid
