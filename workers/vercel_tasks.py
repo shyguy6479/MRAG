@@ -4,8 +4,12 @@ import sys
 from pathlib import Path
 
 from celery import Celery, Task
+from vercel.integrations.celery import install_vercel_celery_integration
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+# Keep the adapter visible to Vercel's import-based dependency bundler.
+install_vercel_celery_integration()
 
 app = Celery("mrag", broker="vercel://", backend="vercel-runtime-cache://")
 app.conf.update(

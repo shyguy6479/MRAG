@@ -57,6 +57,11 @@ allow Vercel to redeliver interrupted tasks after their queue lease expires.
 No public rewrite or HTTP service binding is needed for the private subscriber.
 Redis remains required for shared caching and rate limits.
 
+The Vercel Celery adapter is an explicit, locked dependency, with static imports
+in both hosted entrypoints. This keeps it in each function's dependency bundle;
+relying on the builder's automatic installation alone caused a runtime
+`ModuleNotFoundError: No module named 'vercel'` before the API could start.
+
 The existing Docker deployment still uses `ingestion_mode=celery` with its
 separate worker and scheduler. For a traditional worker outside Vercel, use:
 
@@ -80,7 +85,9 @@ ATLAS_GENERATOR=extractive
 ATLAS_MAX_UPLOAD_BYTES=3145728
 ```
 
-Replace placeholders; do not commit credentials. Set the required variables for Production and Preview environments. The Vercel entrypoint explicitly
+Replace placeholders; do not commit credentials. Configure Production first;
+only enable Preview deployments with their own isolated infrastructure and keys.
+The Vercel entrypoint explicitly
 requires production settings and queue ingestion and caps uploads at 3 MiB (or a smaller configured limit).
 It will reject missing durable infrastructure or a missing workspace key rather
 than start with ephemeral SQLite and a process-local background poller.
@@ -147,7 +154,7 @@ vercel dev -L
 This starts the services together. Use `vercel dev` for a linked Vercel project.
 There are no bindings in this layout; if added later, the CLI injects their URLs.
 Verify `/research` refresh serves the SPA, `/assets/*` serves actual assets,
-`/api/health` succeeds, `/api/ready` observes the worker heartbeat, unauthorized
+`/api/health` succeeds, `/api/ready` checks PostgreSQL and Redis, unauthorized
 `/api/system` is rejected, and authorized upload/poll/research/conversation paths
 work. Check `/api/docs` and `/api/openapi.json` with authorization as well.
 
@@ -160,10 +167,10 @@ missing `uv` prerequisite was resolved using temporary validation tools. The CLI
 production Redis configuration. The external test database, Redis and worker
 still need to be configured before a live service test can pass.
 
-The hosted build and startup diagnostic response were verified on 2026-10-06.
-External infrastructure and end-to-end research/ingestion remain unverified because
-the production project has no environment variables configured. Provision the
-required infrastructure and variables, then redeploy and verify the full workflow.
+On 2026-10-11, Neon Free was connected to Production and migration `0001` was
+applied and verified. Redis provisioning and the private workspace key are still
+pending. End-to-end research and ingestion cannot be verified until those are
+configured and a fresh deployment starts successfully.
 
 References: [services routing](https://vercel.com/docs/services/routing),
 [bindings](https://vercel.com/docs/services/bindings),
