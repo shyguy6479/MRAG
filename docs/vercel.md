@@ -133,14 +133,11 @@ configured model providers. Startup errors are sanitized; API readiness remains
 unsuccessful until the service can actually initialize. Native local/Docker
 startup behavior is unchanged.
 
-The production project was inspected on 2026-10-06: Vercel showed **No Environment
-Variables Added**, and `/api/health` returned HTTP 500 before these changes.
-Provisioning production infrastructure is required in addition to deploying code.
-After deploying the import fix, the live `/api/health` endpoint returned the
-expected HTTP 503 `deployment_not_configured` response listing the three missing
-variables; the research page displayed that same actionable message. The import
-crash is resolved. Research and ingestion remain unavailable until infrastructure
-and secrets are configured.
+The original deployment had no production environment variables and returned
+HTTP 500. The source import and Celery adapter bundling fixes now let the API
+start and return a sanitized HTTP 503 diagnostic when configuration is missing.
+The frontend reports the same error once, without duplicate banners. Configure
+the remaining settings and redeploy before expecting a connected workspace.
 
 ## Local verification
 
@@ -164,13 +161,17 @@ Vercel CLI 62.4.0 recognized both services and started the Vite service. The Pyt
 The configuration passed the official Vercel JSON schema. Full
 `vercel dev -L` verification stopped because the local file watcher exceeded its open-file limit. The earlier
 missing `uv` prerequisite was resolved using temporary validation tools. The CLI reached `app/main.py` successfully and then correctly rejected absent
-production Redis configuration. The external test database, Redis and worker
-still need to be configured before a live service test can pass.
+production Redis configuration. A fully configured deployment is still required
+to validate the hosted upload, queue delivery and research workflow.
 
 On 2026-10-11, Neon Free was connected to Production and migration `0001` was
-applied and verified. Redis provisioning and the private workspace key are still
-pending. End-to-end research and ingestion cannot be verified until those are
-configured and a fresh deployment starts successfully.
+applied and verified. On 2026-10-12, Upstash Redis Free (`mrag-redis`, region
+`iad1`) was provisioned and connected to Production only with the `ATLAS` prefix.
+The integration supplies `ATLAS_REDIS_URL`; its REST URL and tokens are not
+substitutes for this Redis connection URL. Credentials remain in Vercel.
+The private `ATLAS_API_KEY` still needs to be entered and saved by the owner,
+followed by a redeploy. End-to-end research and ingestion remain unverified
+until that setup is complete.
 
 References: [services routing](https://vercel.com/docs/services/routing),
 [bindings](https://vercel.com/docs/services/bindings),
