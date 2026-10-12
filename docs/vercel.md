@@ -26,24 +26,29 @@ set project-wide framework/build overrides: each service owns its build settings
 - `gateway` binds to `app` through the runtime variable `MRAG_BACKEND_URL`.
   Vercel injects this value. Do not create it manually.
 
-All visitors share the same documents and research history. The gateway reads the
+Every browser receives an isolated workspace through a signed, HttpOnly cookie.
+Documents, conversations, job counts, retrieval snapshots and cache keys are
+scoped on the server. Foreign document IDs cannot bypass this scope. The gateway reads the
 existing server-only `ATLAS_API_KEY` and supplies it on internal backend requests.
 Browser JavaScript neither receives nor sends that key; releases remove the legacy
-browser session copy. Settings contains workspace details and shortcuts, with no
+browser session copy. Settings contains private workspace details and shortcuts, with no
 connection form or connection status indicators. The backend retains API-key
 validation. Public traffic has no rewrite directly to `app` or its worker.
 The gateway allowlists workspace routes, preserves upload bytes and API statuses,
 bounds request bodies, blocks cross-origin browser writes, and prevents response
 caching. The existing Redis rate and corpus limits remain in effect. This is a
-public collaborative workspace, including upload, retry and document deletion;
-it does not provide individual accounts or private documents.
+private browser workspace, including upload, retry and document deletion.
+It provides device/browser isolation, not an account system or cross-device sync.
+Clearing cookies or rotating the signing key starts a new workspace.
 
 Vercel service routing preserves `/api` on both gateway and backend calls.
 The binding URL is used only in a server function, never a static build or middleware.
 `VITE_API_BASE_URL` should be unset or `/api`. Never put credentials in `VITE_*`.
 Optional `VITE_GRAFANA_URL` controls the public dashboard link.
 `MRAG_DEV_API_URL` controls the ordinary local Vite proxy; local Vite injects the
-root `.env`'s `ATLAS_API_KEY` from its Node dev server, without bundling it.
+gateway URL (default `http://127.0.0.1:8001`). Start the local gateway with
+`uvicorn gateway.main:app --host 127.0.0.1 --port 8001`; it forwards to the local
+API at port 8000. Both servers read server-only `ATLAS_API_KEY` when configured.
 
 ## Required external infrastructure
 
@@ -226,7 +231,7 @@ References: [services routing](https://vercel.com/docs/services/routing),
    and deploy the private queue subscriber against the same production services. Use a
    separate database/Redis/worker configuration for Preview deployments.
 7. Deploy; Vercel routes `/api/*` to FastAPI and other paths to Vite. Check
-   `/api/ready`, then verify anonymous shared-workspace access and
+   `/api/ready`, then verify isolated browser-workspace access and
    document upload, indexed status, search, citations and saved conversations.
 8. Configure your final frontend origin in `ATLAS_ALLOWED_ORIGINS` if you want
    explicit CORS grants. When it is unset, the hosted entrypoint grants no
@@ -302,7 +307,7 @@ Local Vite development only: `MRAG_DEV_API_URL`.
 test inputs. They are not Vercel application settings. `PORT`, `VERCEL` and related
 platform variables are owned by Vercel; do not create internal binding URL values.
 
-## Shared-workspace gateway verification
+## Private-workspace gateway verification
 
 The service `gateway` receives `/api/:path*`; `web` receives the final catch-all.
 `app` has no public rewrite. The four-field binding is declared on `gateway`:
@@ -310,8 +315,23 @@ The service `gateway` receives `/api/:path*`; `web` receives the final catch-all
 Keep the existing `ATLAS_API_KEY` available to both Python services in Production;
 no new manually entered secret is required. The private ingestion subscriber stays
 on `app` and continues using PostgreSQL and Vercel Queues unchanged.
-Tests verify anonymous visitors can share persisted documents and research while
-direct backend access without the server key remains unauthorized.
+Tests verify two browser identities cannot access each other’s documents,
+conversations, job counts or cached retrieval results. Direct backend access
+without the server key remains unauthorized.
 
 References: [Vercel service bindings](https://vercel.com/docs/services/bindings) and
 [service routing](https://vercel.com/docs/services/routing).
+
+## Workspace isolation release (0002)
+
+Migration `0002` adds indexed `workspace_id` columns to documents and messages.
+The hosted API and worker apply only this additive migration from `0001` inside a
+transaction, protected by a PostgreSQL advisory lock. Unknown schema versions fail
+closed. Operators can also run `alembic upgrade head` before deployment.
+Existing shared rows are preserved under `legacy`, inaccessible to new visitor
+workspaces. An operator can assign those rows to the verified owner’s workspace
+reference using the database console; no public claim endpoint exists.
+The reference is an identifier, not a credential. The signed cookie is HttpOnly,
+Secure in Vercel, SameSite=Strict, and expires after one year. `/api/workspace`
+bootstraps it once before other client requests; arbitrary tenant headers and
+forged cookies cannot select another workspace. The API key stays server-only.

@@ -9,6 +9,7 @@ from atlasrag.core.config import Settings
 from atlasrag.core.models import Evidence, Filters, SearchHit
 from atlasrag.core.protocols import DenseIndex, Reranker
 from atlasrag.core.storage import Database
+from atlasrag.core.tenancy import workspace_id
 from atlasrag.observability.telemetry import Telemetry
 from atlasrag.reranking.rerankers import CrossEncoderReranker, LexicalReranker
 from atlasrag.retrieval.fusion import reciprocal_rank_fusion
@@ -23,6 +24,7 @@ class Snapshot:
     evidence: list[Evidence]
     dense: DenseIndex
     sparse: BM25Index
+    workspace: str | None = None
 
 
 @dataclass
@@ -68,7 +70,11 @@ class RetrievalEngine:
 
     def snapshot(self) -> Snapshot:
         with self.lock:
-            if self.current and self.current.revision == self.db.revision():
+            if (
+                self.current
+                and self.current.workspace == workspace_id.get()
+                and self.current.revision == self.db.revision()
+            ):
                 return self.current
             revision, evidence = self.db.snapshot()
             dense: DenseIndex
@@ -81,7 +87,9 @@ class RetrievalEngine:
                     dense = NeuralMemoryIndex(evidence, self.embedder)
                 else:
                     dense = LSAIndex(evidence)
-                self.current = Snapshot(revision, evidence, dense, BM25Index(evidence))
+                self.current = Snapshot(
+                    revision, evidence, dense, BM25Index(evidence), workspace_id.get()
+                )
             return self.current
 
     def search(
@@ -91,6 +99,7 @@ class RetrievalEngine:
         key = cache_key(
             "retrieval",
             [
+                snapshot.workspace,
                 snapshot.revision,
                 query,
                 filters.model_dump(mode="json"),

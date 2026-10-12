@@ -17,12 +17,20 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy import delete as sql_delete
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    Session,
+    mapped_column,
+    sessionmaker,
+    with_loader_criteria,
+)
 from sqlalchemy.pool import StaticPool
 
 from atlasrag.core.config import Settings
 from atlasrag.core.errors import CapacityExceeded, NotFound
 from atlasrag.core.models import DocumentInfo, DocumentStatus, Evidence, utcnow
+from atlasrag.core.tenancy import new_row_workspace, workspace_id
 
 
 class Base(DeclarativeBase):
@@ -31,6 +39,9 @@ class Base(DeclarativeBase):
 
 class DocumentRow(Base):
     __tablename__ = "documents"
+    workspace_id: Mapped[str] = mapped_column(
+        String(64), default=new_row_workspace, server_default="legacy", index=True
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     title: Mapped[str] = mapped_column(String(250))
     source: Mapped[str] = mapped_column(String(1000))
@@ -72,11 +83,47 @@ class RevisionRow(Base):
 
 class MessageRow(Base):
     __tablename__ = "messages"
+    workspace_id: Mapped[str] = mapped_column(
+        String(64), default=new_row_workspace, server_default="legacy", index=True
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     conversation_id: Mapped[str] = mapped_column(String(36), index=True)
     question: Mapped[str]
     response: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WorkspaceSession(Session):
+    """All ORM reads and bulk mutations obey the current trusted workspace."""
+
+
+@event.listens_for(WorkspaceSession, "do_orm_execute")
+def scope_workspace(execute_state: Any) -> None:
+    tenant = workspace_id.get()
+    if tenant is None:
+        return
+    execute_state.statement = execute_state.statement.options(
+        with_loader_criteria(
+            DocumentRow, lambda row: row.workspace_id == tenant, include_aliases=True
+        ),
+        with_loader_criteria(
+            MessageRow, lambda row: row.workspace_id == tenant, include_aliases=True
+        ),
+        with_loader_criteria(
+            ChunkRow,
+            lambda row: row.document_id.in_(
+                select(DocumentRow.id).where(DocumentRow.workspace_id == tenant)
+            ),
+            include_aliases=True,
+        ),
+        with_loader_criteria(
+            JobRow,
+            lambda row: row.document_id.in_(
+                select(DocumentRow.id).where(DocumentRow.workspace_id == tenant)
+            ),
+            include_aliases=True,
+        ),
+    )
 
 
 class Database:
@@ -97,12 +144,18 @@ class Database:
                 connection.execute("PRAGMA foreign_keys=ON")
                 connection.execute("PRAGMA journal_mode=WAL")
 
-        self.sessions = sessionmaker(self.engine, expire_on_commit=False)
+        self.sessions = sessionmaker(self.engine, class_=WorkspaceSession, expire_on_commit=False)
         self.settings = settings
         self.lock = threading.RLock()
 
     def initialize(self) -> None:
-        # Production schema changes run through Alembic before API startup.
+        # Hosted release 0002 is an additive, advisory-lock-protected migration.
+        # The base schema and later migrations still require operator deployment.
+        if self.settings.environment == "production" and self.settings.ingestion_mode == "vercel":
+            from atlasrag.core.schema import upgrade_hosted_workspace
+
+            with self.engine.begin() as connection:
+                upgrade_hosted_workspace(connection)
         if self.settings.environment != "production":
             Base.metadata.create_all(self.engine)
         with self.sessions.begin() as session:

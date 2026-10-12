@@ -203,10 +203,22 @@ export class ApiError extends Error {
     super(message);
   }
 }
+let workspace: Promise<void> | undefined;
+function initializeWorkspace(): Promise<void> {
+  if (!workspace) {
+    workspace = fetch(`${apiBaseUrl}/workspace`, { credentials: "same-origin" })
+      .then((response) => {
+        if (!response.ok) throw new ApiError("Your workspace could not be opened. Please try again.", response.status);
+      })
+      .catch((error) => { workspace = undefined; throw error; });
+  }
+  return workspace;
+}
 export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  await initializeWorkspace();
   const headers = new Headers(options.headers);
   // Remove credentials saved by older releases; authentication is server-managed.
   sessionStorage.removeItem("atlas-api-key");
@@ -215,7 +227,7 @@ export async function api<T>(
     headers.set("Content-Type", "application/json");
   let response: Response;
   try {
-    response = await fetch(`${apiBaseUrl}${path}`, { ...options, headers });
+    response = await fetch(`${apiBaseUrl}${path}`, { ...options, headers, credentials: "same-origin" });
   } catch (error) {
     if ((error as Error).name === "AbortError") throw error;
     throw new ApiError(

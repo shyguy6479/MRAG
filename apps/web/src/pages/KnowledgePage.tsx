@@ -82,9 +82,9 @@ export default function KnowledgePage({
           }
         />
         <Metric
-          label="Index size"
-          value="Unavailable"
-          note="Disk size is not exposed"
+          label="Ready to research"
+          value={documents.filter((doc) => doc.status === "ready").length}
+          note="Indexed documents"
         />
       </div>
       {error && (
@@ -163,13 +163,13 @@ export default function KnowledgePage({
                       </span>
                     </button>
                   </td>
-                  <td>
+                  <td data-label="Format">
                     <span className="file-type">
                       {doc.format.toUpperCase()}
                     </span>
                   </td>
-                  <td className="mono">{doc.chunk_count}</td>
-                  <td>
+                  <td className="mono" data-label="Chunks">{doc.chunk_count}</td>
+                  <td data-label="Status">
                     <StatusBadge status={doc.status} />
                     {doc.error && <small className="ingestion-error">{doc.error}</small>}
                   </td>
@@ -203,8 +203,7 @@ export default function KnowledgePage({
         </div>
       )}
       <p className="subtle-note">
-        Collections are unavailable in the current API. Document filters and
-        provenance are supported for every indexed source.
+        Your sources stay in your private workspace. Open a document to explore its pages and indexed passages.
       </p>
       {pending && (
         <Dialog title="Delete document" onClose={() => setPending(null)}>

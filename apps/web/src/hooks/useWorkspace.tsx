@@ -17,9 +17,7 @@ export function readLocal<T>(key: string, fallback: T): T {
 function useData() {
   const [system, setSystem] = useState<SystemInfo | null>(null),
     [documents, setDocuments] = useState<DocumentInfo[]>([]),
-    [recent, setRecent] = useState<Recent[]>(() =>
-      readLocal("atlas-recent", []),
-    ),
+    [recent, setRecent] = useState<Recent[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
   const refresh = useCallback(async () => {
@@ -47,10 +45,11 @@ function useData() {
         JSON.stringify(entries.map(({ response, ...entry }) => entry)),
       );
     } catch {
-      /* Existing browser history remains available on older API versions. */
+      setRecent([]);
     }
   }, []);
   useEffect(() => {
+    localStorage.removeItem("atlas-recent");
     refresh().catch(() => {});
     refreshRecent();
   }, [refresh, refreshRecent]);

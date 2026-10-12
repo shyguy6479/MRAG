@@ -19,6 +19,7 @@ from atlasrag.core.errors import AtlasError
 from atlasrag.core.limits import BodyLimitMiddleware, RateLimiter
 from atlasrag.core.runtime import Runtime
 from atlasrag.core.storage import Database
+from atlasrag.core.tenancy import workspace_id
 from atlasrag.observability.telemetry import Telemetry, configure_logging, request_id_var
 from atlasrag.routes import router
 from atlasrag.workspace_routes import router as workspace_router
@@ -121,6 +122,11 @@ def create_app(
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", rid):
             rid = str(uuid4())
         token = request_id_var.set(rid)
+        tenant = request.headers.get("x-mrag-workspace")
+        # Only the authenticated internal gateway supplies this header.
+        tenant_token = workspace_id.set(
+            tenant if tenant and re.fullmatch(r"[0-9a-f]{32}", tenant) else None
+        )
         request.state.request_id = rid
         started = perf_counter()
         status = 500
@@ -153,8 +159,16 @@ def create_app(
                         status = 401
                         return response
                 if request.method in {"POST", "DELETE"}:
-                    identity = key or (request.client.host if request.client else "local")
-                    if not await asyncio.to_thread(app.state.limiter.allowed, identity):
+                    identity = (
+                        workspace_id.get()
+                        or key
+                        or (request.client.host if request.client else "local")
+                    )
+                    permitted = await asyncio.to_thread(app.state.limiter.allowed, identity)
+                    if permitted and key and workspace_id.get():
+                        # Retain the installation-wide budget as well as the tenant budget.
+                        permitted = await asyncio.to_thread(app.state.limiter.allowed, key)
+                    if not permitted:
                         response = JSONResponse(
                             status_code=429,
                             content={
@@ -198,6 +212,7 @@ def create_app(
             telemetry.latency.labels(route=route).observe(perf_counter() - started)
             logger.info("request_completed")
             request_id_var.reset(token)
+            workspace_id.reset(tenant_token)
 
     @app.exception_handler(AtlasError)
     async def atlas_error(request: Request, exc: AtlasError) -> JSONResponse:

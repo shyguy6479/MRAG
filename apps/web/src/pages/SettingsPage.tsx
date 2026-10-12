@@ -1,14 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "../api";
 import { useWorkspace } from "../hooks/useWorkspace";
 import { PageHeader, SectionHeader, Tabs } from "../components/ui";
 export default function SettingsPage() {
   const { system } = useWorkspace();
+  const [reference, setReference] = useState("");
+  useEffect(() => {
+    api<{ workspace_id: string }>("/workspace").then((value) => setReference(value.workspace_id)).catch(() => {});
+  }, []);
   const [tab, setTab] = useState<"workspace" | "shortcuts">("workspace");
   return (
     <div className="page settings-page">
       <PageHeader
         title="Settings"
-        description="Manage your shared research workspace and keyboard shortcuts."
+        description="Manage your private research workspace and keyboard shortcuts."
       />
       <Tabs
         value={tab}
@@ -22,12 +27,13 @@ export default function SettingsPage() {
         <section className="settings-section">
           <SectionHeader
             title="Research workspace"
-            description="Everyone uses the same documents and research history. Research services are managed automatically."
+            description="Your documents and research history belong to this browser’s private workspace. Other visitors cannot access them."
           />
           {system ? (
             <div className="settings-columns">
               <dl className="technical-list">
                 {Object.entries({
+                  "Workspace reference": reference || "Loading…",
                   Environment: system.profile,
                   "Dense backend": system.dense_backend,
                   "Embedding model": system.embedding_model,
@@ -62,6 +68,7 @@ export default function SettingsPage() {
               Workspace details are loading.
             </p>
           )}
+          <p className="subtle-note">This workspace stays with this browser. Clearing its cookies starts a new workspace; devices are not synced.</p>
           <p className="subtle-note">
             Deep Analysis uses a broader ten-chunk retrieval budget with the
             same configured provider. Exact support scores are heuristic and are

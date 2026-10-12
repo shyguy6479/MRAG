@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowLeftToLine,
@@ -46,6 +46,7 @@ export default function AppShell({
   children: ReactNode;
 }) {
   const { system, recent } = useWorkspace();
+  const sidebar = useRef<HTMLElement>(null);
   const [collapsed, setCollapsed] = useState(() =>
       readLocal("atlas-sidebar-collapsed", false),
     ),
@@ -64,6 +65,28 @@ export default function AppShell({
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
+  useEffect(() => {
+    if (!mobile) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusable = () => Array.from(sidebar.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input, select, [tabindex="0"]',
+    ) || []).filter((element) => element.offsetParent !== null);
+    focusable()[0]?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const elements = focusable(), first = elements[0], last = elements.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", trap);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener("keydown", trap);
+      previous?.focus();
+    };
+  }, [mobile]);
   const go = (next: Page) => {
     navigate(next);
     setMobile(false);
@@ -111,15 +134,16 @@ export default function AppShell({
           onClick={() => setMobile(false)}
         />
       )}
-      <aside className={`app-sidebar ${mobile ? "mobile-open" : ""}`}>
+      <aside ref={sidebar} aria-label="Workspace navigation" className={`app-sidebar ${mobile ? "mobile-open" : ""}`}>
         <div className="sidebar-brand">
           <Layers3 size={23} />
           <strong>
             M<span>RAG</span>
           </strong>
           <IconButton
-            label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            label={mobile ? "Close navigation" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
             onClick={() => {
+              if (mobile) { setMobile(false); return; }
               setCollapsed(!collapsed);
               localStorage.setItem(
                 "atlas-sidebar-collapsed",
@@ -127,7 +151,7 @@ export default function AppShell({
               );
             }}
           >
-            {collapsed ? (
+            {mobile ? <X size={18} /> : collapsed ? (
               <ArrowRightFromLine size={16} />
             ) : (
               <ArrowLeftToLine size={16} />
@@ -194,7 +218,7 @@ export default function AppShell({
                   <MoreHorizontal size={15} />
                 </summary>
                 <div>
-                  <button onClick={() => onSession(item.id)}>
+                  <button onClick={() => { onSession(item.id); setMobile(false); }}>
                     Open research
                   </button>
                   <button

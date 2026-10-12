@@ -3547,3 +3547,61 @@ blockquote {
   color: var(--danger, #b42318);
   overflow-wrap: anywhere;
 }
+
+/* Compact, touch-first workspace layouts. */
+@media (max-width: 760px) {
+  html, body, #root { min-width: 0; width: 100%; }
+  .workspace-main, .workspace-content, .page, .research-home { min-width: 0; max-width: 100%; }
+  .app-toolbar { height: 64px; padding: 0 16px; background: #fff; }
+  .command-trigger { width: 44px; height: 44px; justify-content: center; }
+  .command-trigger > span { display: none; }
+  .mobile-menu, .icon-button, .button { min-height: 44px; }
+  .mobile-menu, .icon-button { min-width: 44px; }
+  .page, .research-home { padding: 24px 16px; }
+  .page-header h1, .research-home .page-header h1 { font-size: clamp(26px, 7vw, 34px); line-height: 1.16; letter-spacing: -.035em; }
+  .page-header p { font-size: 14px; line-height: 1.65; }
+  input, textarea, select, .input, .research-composer textarea { font-size: 16px; }
+  .app-sidebar.mobile-open { width: min(304px, calc(100vw - 48px)); padding-bottom: env(safe-area-inset-bottom); box-shadow: 20px 0 70px #173e7326; }
+  .sidebar-brand { height: 64px; }
+  .app-sidebar nav button { min-height: 48px; }
+  .research-composer { border-radius: 20px; padding: 16px; box-shadow: 0 8px 32px #194b930a; }
+  .research-composer textarea { min-height: 120px; line-height: 1.6; }
+  .research-composer footer { flex-wrap: wrap; gap: 12px; }
+  .composer-options { flex: 1; min-width: 0; flex-wrap: wrap; }
+  .research-composer .mode-select select { font-size: 13px; max-width: 144px; min-height: 44px; }
+  .research-composer footer > .button { min-width: 48px; min-height: 44px; border-radius: 12px; }
+  .quick-actions { display: flex; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 8px; gap: 8px; scrollbar-width: none; }
+  .quick-actions .button { white-space: nowrap; flex-shrink: 0; border: 1px solid var(--border); border-radius: 999px; padding: 10px 14px; font-size: 12px; }
+  .table-scroll:has(.document-table) { overflow: visible; border: 0; background: transparent; }
+  .document-table { display: block; width: 100%; min-width: 0; }
+  .document-table thead { display: none; }
+  .document-table tbody { display: grid; gap: 14px; }
+  .document-table tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 16px; border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 4px 20px #194b9305; }
+  .document-table tbody td { display: block; padding: 12px 4px 0; border: 0; min-width: 0; font-size: 13px; }
+  .document-table tbody td:first-child { grid-column: 1 / -1; padding: 0 0 14px; border-bottom: 1px solid var(--border); }
+  .document-row-title { align-items: flex-start; width: 100%; text-align: left; font-size: 14px; line-height: 1.5; }
+  .document-row-title > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+  .document-row-title small { font-size: 11px; margin-top: 5px; overflow-wrap: anywhere; }
+  .document-icon { flex-shrink: 0; width: 36px; height: 42px; border-radius: 10px; }
+  .document-table tbody td[data-label]::before { content: attr(data-label); display: block; font-family: inherit; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .document-table tbody td:nth-child(5) { display: none; }
+  .document-table tbody td:last-child { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 8px; padding-top: 12px; }
+  .document-table .ingestion-error { max-width: 100%; font-size: 11px; }
+  .session-layout { height: calc(100dvh - 64px); min-height: 0; }
+  .session-scroll { padding: 20px 16px; }
+  .session-composer { padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+  .research-prose { overflow-wrap: anywhere; font-size: 15px; line-height: 1.8; }
+  .settings-columns { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .technical-list dd { overflow-wrap: anywhere; }
+  .dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 32px); padding: 22px 18px; border-radius: 20px; }
+  .dialog.sheet { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}
+
+@media (max-width: 760px) {
+  .document-table tbody td:nth-child(2), .document-table tbody td:nth-child(3) { display: block; }
+  .document-row-title > span:last-child, .document-row-title small { white-space: normal; overflow: visible; text-overflow: clip; }
+  .research-composer .composer-options { flex: 1 0 100%; justify-content: space-between; }
+  .research-composer footer > .button { width: 100%; justify-content: center; font-size: 14px; }
+  .research-composer footer > .button span { display: inline; }
+  .quick-actions { width: 100%; max-width: 100%; }
+}
