@@ -1,123 +1,28 @@
 import { useState } from "react";
-import { Check, KeyRound, Lock, Settings } from "lucide-react";
 import { useWorkspace } from "../hooks/useWorkspace";
-import {
-  Badge,
-  Button,
-  ErrorState,
-  PageHeader,
-  SectionHeader,
-  Tabs,
-} from "../components/ui";
+import { PageHeader, SectionHeader, Tabs } from "../components/ui";
 export default function SettingsPage() {
-  const { system, refresh, refreshRecent } = useWorkspace();
-  const [tab, setTab] = useState<"connection" | "workspace" | "shortcuts">(
-      "connection",
-    ),
-    [key, setKey] = useState(sessionStorage.getItem("atlas-api-key") || ""),
-    [saving, setSaving] = useState(false),
-    [saved, setSaved] = useState(false),
-    [error, setError] = useState("");
-  async function connect() {
-    setSaving(true);
-    setError("");
-    setSaved(false);
-    const previous = sessionStorage.getItem("atlas-api-key");
-    sessionStorage.setItem("atlas-api-key", key);
-    try {
-      await refresh();
-      await refreshRecent();
-      setSaved(true);
-    } catch (e) {
-      if (previous === null) sessionStorage.removeItem("atlas-api-key");
-      else sessionStorage.setItem("atlas-api-key", previous);
-      setError((e as Error).message);
-      refresh().catch(() => {});
-    } finally {
-      setSaving(false);
-    }
-  }
+  const { system } = useWorkspace();
+  const [tab, setTab] = useState<"workspace" | "shortcuts">("workspace");
   return (
     <div className="page settings-page">
       <PageHeader
         title="Settings"
-        description="Manage your API connection and understand this workspace’s capabilities."
+        description="Manage your shared research workspace and keyboard shortcuts."
       />
       <Tabs
         value={tab}
         onChange={setTab}
         items={[
-          { id: "connection", label: "Connection" },
           { id: "workspace", label: "Workspace" },
           { id: "shortcuts", label: "Keyboard shortcuts" },
         ]}
       />
-      {tab === "connection" ? (
-        <section className="settings-section">
-          <SectionHeader
-            title="API connection"
-            description="The frontend connects to the current server through its same-origin /api proxy."
-          />
-          <div className="settings-form">
-            <div className="field-group">
-              <label className="field-label" htmlFor="api-origin">
-                API path
-              </label>
-              <input
-                id="api-origin"
-                className="input"
-                readOnly
-                value={`${location.origin}/api`}
-              />
-            </div>
-            <div className="field-group">
-              <label className="field-label" htmlFor="api-key">
-                Workspace API key
-              </label>
-              <input
-                id="api-key"
-                className="input"
-                type="password"
-                autoComplete="off"
-                value={key}
-                onChange={(e) => {
-                  setKey(e.target.value);
-                  setSaved(false);
-                }}
-                placeholder="Enter a key if your server requires one"
-              />
-              <small>
-                Stored in this browser session only. Never sent to a third-party
-                endpoint.
-              </small>
-            </div>
-            {error && <ErrorState message={error} />}
-            <Button variant="primary" disabled={saving} onClick={connect}>
-              {saving ? (
-                "Connecting…"
-              ) : saved ? (
-                <>
-                  <Check size={15} />
-                  Connected
-                </>
-              ) : (
-                "Save connection"
-              )}
-            </Button>
-          </div>
-          <div className="settings-note">
-            <Lock size={17} />
-            <p>
-              One trusted workspace is configured. Shared API-key access is not
-              user or document-level authorization.
-            </p>
-          </div>
-        </section>
-      ) : tab === "workspace" ? (
+      {tab === "workspace" ? (
         <section className="settings-section">
           <SectionHeader
             title="Research workspace"
-            description="Current server configuration. Provider settings are managed on the server."
+            description="Everyone uses the same documents and research history. Research services are managed automatically."
           />
           {system ? (
             <div className="settings-columns">
@@ -154,7 +59,7 @@ export default function SettingsPage() {
             </div>
           ) : (
             <p className="muted">
-              Connect to the API to view workspace configuration.
+              Workspace details are loading.
             </p>
           )}
           <p className="subtle-note">

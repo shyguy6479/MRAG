@@ -208,8 +208,9 @@ export async function api<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(options.headers);
-  const key = sessionStorage.getItem("atlas-api-key");
-  if (key) headers.set("X-API-Key", key);
+  // Remove credentials saved by older releases; authentication is server-managed.
+  sessionStorage.removeItem("atlas-api-key");
+  headers.delete("X-API-Key");
   if (options.body && !(options.body instanceof FormData))
     headers.set("Content-Type", "application/json");
   let response: Response;
@@ -218,7 +219,7 @@ export async function api<T>(
   } catch (error) {
     if ((error as Error).name === "AbortError") throw error;
     throw new ApiError(
-      "MRAG could not reach the API. Check the connection and try again.",
+      "MRAG is temporarily unavailable. Please try again.",
       0,
     );
   }
@@ -231,7 +232,7 @@ export async function api<T>(
         : body.detail);
     throw new ApiError(
       response.status === 401
-        ? "Workspace key required. Update your API connection in Settings."
+        ? "The workspace is temporarily unavailable. Please try again later."
         : detail || (response.headers.get("X-Vercel-Error") === "FUNCTION_INVOCATION_FAILED"
           ? "The deployed API crashed during startup. Check Vercel runtime logs and backend environment variables."
           : "The service could not complete this request."),

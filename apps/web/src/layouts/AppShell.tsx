@@ -45,7 +45,7 @@ export default function AppShell({
   onSession: (id: string) => void;
   children: ReactNode;
 }) {
-  const { system, recent, error } = useWorkspace();
+  const { system, recent } = useWorkspace();
   const [collapsed, setCollapsed] = useState(() =>
       readLocal("atlas-sidebar-collapsed", false),
     ),
@@ -211,21 +211,6 @@ export default function AppShell({
           ))}
         </div>
         <div className="sidebar-footer">
-          <div className={`connection-status ${error ? "is-warning" : ""}`}>
-            <span className="status-dot" />
-            <span>
-              {error
-                ? "Connection issue"
-                : system
-                  ? "API connected"
-                  : "Connecting…"}
-              <small>
-                {system
-                  ? `${system.ready_documents} documents indexed`
-                  : "Checking workspace"}
-              </small>
-            </span>
-          </div>
           <button
             className={`settings-nav ${page === "settings" ? "selected" : ""}`}
             onClick={() => go("settings")}
@@ -267,10 +252,6 @@ export default function AppShell({
                 <Command size={11} />K
               </kbd>
             </button>
-            <span className="toolbar-status">
-              <i className={`status-dot ${error ? "warning" : ""}`} />
-              {error ? "Disconnected" : system ? "Connected" : "Connecting"}
-            </span>
             <IconButton label="Open settings" onClick={() => go("settings")}>
               <Settings size={17} />
             </IconButton>

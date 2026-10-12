@@ -12,42 +12,41 @@ The `app` service's Vercel entrypoint must be **`pyproject.toml`**. The manifest
 exports `app.main:app` and declares `workers.vercel_tasks:app` as a private queue
 subscriber. A direct `app.main:app` service entrypoint deploys the API but skips
 subscriber discovery in Services mode. That left uploads durably queued with
-zero chunks. Verify **two Python functions** in Deployment → Resources:
+zero chunks. Verify the backend’s **two Python functions** in Deployment → Resources:
 `/fastapi` and `/_py_subscribers/workers-vercel__tasks__app`.
 
 The repository root contains `vercel.json`. Import the entire repository with
 Vercel's project root set to `.`. Do not select `apps/web` as the project root or
 set project-wide framework/build overrides: each service owns its build settings.
 
-- `web`: static Vite frontend at `/`, including client routes and `/assets/*`.
-- `app`: FastAPI service at `/api/*`, entrypoint `app.main:app`.
-- Neither configured service is internal-only. API data routes still require the
-  workspace key. Existing health/readiness/metrics exemptions are preserved under
-  `/api`.
+- `web`: public static Vite frontend at `/`, including client routes and `/assets/*`.
+- `gateway`: public FastAPI gateway at `/api/*`, entrypoint `gateway/main.py`.
+- `app`: internal FastAPI backend, entrypoint manifest `pyproject.toml`.
+- `gateway` binds to `app` through the runtime variable `MRAG_BACKEND_URL`.
+  Vercel injects this value. Do not create it manually.
 
-Vercel service routing preserves the original path. The deployment entrypoint
-registers all API, operations and OpenAPI routes with `/api`; existing Docker and
-plain Vite development use the unprefixed API entrypoint unchanged. Browser code
-continues using same-origin `/api`, with no backend URL embedded in its bundle.
+All visitors share the same documents and research history. The gateway reads the
+existing server-only `ATLAS_API_KEY` and supplies it on internal backend requests.
+Browser JavaScript neither receives nor sends that key; releases remove the legacy
+browser session copy. Settings contains workspace details and shortcuts, with no
+connection form or connection status indicators. The backend retains API-key
+validation. Public traffic has no rewrite directly to `app` or its worker.
+The gateway allowlists workspace routes, preserves upload bytes and API statuses,
+bounds request bodies, blocks cross-origin browser writes, and prevents response
+caching. The existing Redis rate and corpus limits remain in effect. This is a
+public collaborative workspace, including upload, retry and document deletion;
+it does not provide individual accounts or private documents.
 
-There are no service bindings because the frontend has no server functions: its
-API requests originate in the browser, not a Vercel service function. `app` does
-not call `web`. Runtime bindings cannot be read by static Vite browser code or
-at build time. Do not create or manually set an unused API binding variable.
-An optional `VITE_API_BASE_URL` changes the public browser API base; leave it
-unset or set it to `/api` for this same-domain deployment. If using a separate
-backend domain instead, include `/api` in that public URL and add the exact frontend
-origin to `ATLAS_ALLOWED_ORIGINS`. Optional `VITE_GRAFANA_URL` controls the public
-dashboard link; when unset, that link is hidden in production. These are public
-build-time variables and require a frontend rebuild when changed.
-`MRAG_DEV_API_URL` controls only the ordinary local Vite proxy.
-
-If a server-side frontend or additional backend service is introduced later,
-declare a four-field binding on that actual caller and consume it in the function.
+Vercel service routing preserves `/api` on both gateway and backend calls.
+The binding URL is used only in a server function, never a static build or middleware.
+`VITE_API_BASE_URL` should be unset or `/api`. Never put credentials in `VITE_*`.
+Optional `VITE_GRAFANA_URL` controls the public dashboard link.
+`MRAG_DEV_API_URL` controls the ordinary local Vite proxy; local Vite injects the
+root `.env`'s `ATLAS_API_KEY` from its Node dev server, without bundling it.
 
 ## Required external infrastructure
 
-This configuration deploys two HTTP services and one private queue subscriber.
+This configuration deploys three HTTP services and one private queue subscriber.
 PostgreSQL and Redis are managed services, not localhost or Docker containers.
 Use Neon Free for PostgreSQL and Upstash Free for Redis. Connect integrations to
 Production only with the `ATLAS` variable prefix. Standard `postgresql://` URLs
@@ -120,7 +119,7 @@ The Vercel entrypoint explicitly
 requires production settings and queue ingestion and caps uploads at 3 MiB (or a smaller configured limit).
 It will reject missing durable infrastructure or a missing workspace key rather
 than start with ephemeral SQLite and a process-local background poller.
-The API key is entered in the UI Settings and held in browser session storage;
+The API key remains in the gateway and backend server environments;
 it must never be supplied as a `VITE_*` build variable.
 
 Run `alembic upgrade head` from a trusted environment with the database settings
@@ -154,7 +153,7 @@ In **Settings → Environment Variables**, configure `ATLAS_DATABASE_URL`,
 `ATLAS_REDIS_URL` and `ATLAS_API_KEY` for Production, then redeploy. Use hosted
 PostgreSQL and Redis URLs, not Docker service names or localhost. Run the database
 migrations and deploy the private queue subscriber described above. Enter the workspace
-key privately in the MRAG Settings page after the API starts.
+key in Vercel server environments; visitors do not enter a key.
 
 If the API returns `storage_not_ready`, verify the database connection and run
 `alembic upgrade head`. If it returns `runtime_not_ready`, check Redis and any
@@ -178,7 +177,7 @@ vercel dev -L
 ```
 
 This starts the services together. Use `vercel dev` for a linked Vercel project.
-There are no bindings in this layout; if added later, the CLI injects their URLs.
+The CLI injects `MRAG_BACKEND_URL` for the gateway-to-app binding.
 Verify `/research` refresh serves the SPA, `/assets/*` serves actual assets,
 `/api/health` succeeds, `/api/ready` checks PostgreSQL and Redis, unauthorized
 `/api/system` is rejected, and authorized upload/poll/research/conversation paths
@@ -214,8 +213,8 @@ References: [services routing](https://vercel.com/docs/services/routing),
 
 1. Import `shyguy6479/MRAG`, selecting the branch with these changes.
 2. Set **Root Directory** to `.` (the repository root).
-3. Select the **Services** application preset. The service names are `app` and
-   `web`; their framework presets are FastAPI and Vite respectively.
+3. Select the **Services** application preset. The service names are `app`, `gateway` and
+   `web`; their framework presets are FastAPI, FastAPI and Vite respectively.
 4. Use Node.js **22.x** for the web service. Python **3.12** is selected by
    `.python-version`. Retain `pyproject.toml`/`uv.lock` dependency detection.
 5. Leave project-level Install/Build/Output overrides unset. `web` uses `npm ci`,
@@ -226,7 +225,7 @@ References: [services routing](https://vercel.com/docs/services/routing),
    and deploy the private queue subscriber against the same production services. Use a
    separate database/Redis/worker configuration for Preview deployments.
 7. Deploy; Vercel routes `/api/*` to FastAPI and other paths to Vite. Check
-   `/api/ready`, then enter your workspace key in MRAG Settings and verify
+   `/api/ready`, then verify anonymous shared-workspace access and
    document upload, indexed status, search, citations and saved conversations.
 8. Configure your final frontend origin in `ATLAS_ALLOWED_ORIGINS` if you want
    explicit CORS grants. When it is unset, the hosted entrypoint grants no
@@ -301,3 +300,17 @@ Local Vite development only: `MRAG_DEV_API_URL`.
 `ATLAS_INTEGRATION_DATABASE_URL` and `ATLAS_INTEGRATION_REDIS_URL` are integration
 test inputs. They are not Vercel application settings. `PORT`, `VERCEL` and related
 platform variables are owned by Vercel; do not create internal binding URL values.
+
+## Shared-workspace gateway verification
+
+The service `gateway` receives `/api/:path*`; `web` receives the final catch-all.
+`app` has no public rewrite. The four-field binding is declared on `gateway`:
+`type=service`, `service=app`, `format=url`, `env=MRAG_BACKEND_URL`.
+Keep the existing `ATLAS_API_KEY` available to both Python services in Production;
+no new manually entered secret is required. The private ingestion subscriber stays
+on `app` and continues using PostgreSQL and Vercel Queues unchanged.
+Tests verify anonymous visitors can share persisted documents and research while
+direct backend access without the server key remains unauthorized.
+
+References: [Vercel service bindings](https://vercel.com/docs/services/bindings) and
+[service routing](https://vercel.com/docs/services/routing).

@@ -33,13 +33,31 @@
           "dest": "/index.html"
         }
       ]
+    },
+    "gateway": {
+      "root": ".",
+      "framework": "fastapi",
+      "entrypoint": "gateway/main.py",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "app",
+          "format": "url",
+          "env": "MRAG_BACKEND_URL"
+        }
+      ],
+      "functions": {
+        "gateway/main.py": {
+          "maxDuration": 60
+        }
+      }
     }
   },
   "rewrites": [
     {
       "source": "/api/:path*",
       "destination": {
-        "service": "app"
+        "service": "gateway"
       }
     },
     {
