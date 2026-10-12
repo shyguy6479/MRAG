@@ -20,7 +20,8 @@ Vercel's project root set to `.`. Do not select `apps/web` as the project root o
 set project-wide framework/build overrides: each service owns its build settings.
 
 - `web`: public static Vite frontend at `/`, including client routes and `/assets/*`.
-- `gateway`: public FastAPI gateway at `/api/*`, entrypoint `gateway/main.py`.
+- `gateway`: public FastAPI gateway at `/api/*`, service root `gateway`, entrypoint
+  `main.py`. Its own `requirements.txt` isolates its lightweight build.
 - `app`: internal FastAPI backend, entrypoint manifest `pyproject.toml`.
 - `gateway` binds to `app` through the runtime variable `MRAG_BACKEND_URL`.
   Vercel injects this value. Do not create it manually.

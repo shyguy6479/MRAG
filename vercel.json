@@ -9,12 +9,12 @@
         "app/main.py": {
           "maxDuration": 60,
           "includeFiles": "{src/atlasrag/**,workers/**,benchmarks/results/local.json,benchmarks/results/neural.json,benchmarks/questions.json}",
-          "excludeFiles": "{apps/web/**,docs/screenshots/**,tests/**,.venv/**,data/**,.cursor/**,.agents/**}"
+          "excludeFiles": "{apps/web/**,docs/screenshots/**,tests/**,.venv/**,data/**,.cursor/**,.agents/**,gateway/**,.vercel/**}"
         },
         "workers/vercel_tasks.py": {
           "maxDuration": 60,
           "includeFiles": "src/atlasrag/**",
-          "excludeFiles": "{apps/web/**,docs/screenshots/**,tests/**,.venv/**,data/**,.cursor/**,.agents/**}"
+          "excludeFiles": "{apps/web/**,docs/screenshots/**,tests/**,.venv/**,data/**,.cursor/**,.agents/**,gateway/**,.vercel/**}"
         }
       }
     },
@@ -35,9 +35,9 @@
       ]
     },
     "gateway": {
-      "root": ".",
+      "root": "gateway",
       "framework": "fastapi",
-      "entrypoint": "gateway/main.py",
+      "entrypoint": "main.py",
       "bindings": [
         {
           "type": "service",
@@ -47,7 +47,7 @@
         }
       ],
       "functions": {
-        "gateway/main.py": {
+        "main.py": {
           "maxDuration": 60
         }
       }
