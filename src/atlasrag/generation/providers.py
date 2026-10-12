@@ -18,10 +18,12 @@ class ExtractiveGenerator:
         query_terms = set(tokens(question))
         lines, seen = [], set()
         for citation in citations:
-            sentences = re.split(r"(?<=[.!?])\s+|\n+", citation.text)
+            # PDF extraction wraps sentences and table rows across single newlines.
+            # Keep them together; whitespace normalization preserves exact-source verification.
+            sentences = re.split(r"(?<=[.!?])\s+|\n\s*\n+", citation.text)
             candidates = []
             for sentence in sentences:
-                sentence = sentence.strip()
+                sentence = re.sub(r"\s+", " ", sentence).strip()
                 terms = set(tokens(sentence))
                 overlap = len(query_terms & terms)
                 if (

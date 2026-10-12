@@ -121,3 +121,37 @@ async def test_provider_failure_is_typed_and_sanitized() -> None:
     with pytest.raises(ProviderUnavailable) as caught:
         await generator.generate("question", [])
     assert "secret" not in caught.value.public_message
+
+
+@pytest.mark.asyncio
+async def test_wrapped_pdf_skill_table_remains_grounded_within_context_budget() -> None:
+    from atlasrag.generation.providers import ExtractiveGenerator
+
+    table = (
+        "MLOps production deployment\n"
+        "MLflow, version data/code, Dockerise API, run tests in\n"
+        "GitHub Actions, promote model after metric checks\n"
+        "Reproducibility, automated tests, model registry, rollback,\n"
+        "deployment reliability\nModel monitoring service\n"
+        "Serve model/API and monitor latency, prediction distributions,\n"
+        "feature drift and model quality when labels arrive\n"
+    ) * 4
+    passage = evidence(1, table, 1).model_copy(update={"page": 16})
+    citations = select_context([SearchHit(evidence=passage, score=1)], 700, 2)
+    assert citations and citations[0].page == 16
+    assert citations[0].text in table
+    assert (
+        len(citations[0].text.encode())
+        + len((citations[0].title + citations[0].section).encode())
+        + 32
+        <= 700
+    )
+    generated = await ExtractiveGenerator().generate(
+        "Which MLOps skills and tools are recommended for production deployment "
+        "and monitoring? Cite the report pages.",
+        citations,
+    )
+    assert "MLflow" in generated.answer and "[1]" in generated.answer
+    assert all(claim.status == "supported" for claim in verify_claims(generated.answer, citations))
+    unrelated = await ExtractiveGenerator().generate("What is quantum entanglement?", citations)
+    assert unrelated.answer == INSUFFICIENT

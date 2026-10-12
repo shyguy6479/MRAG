@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import math
 import time
 from collections.abc import Callable
 from uuid import UUID, uuid4, uuid5
@@ -7,7 +8,7 @@ from uuid import UUID, uuid4, uuid5
 from sqlalchemy import delete, func, or_, select, update
 
 from atlasrag.core.config import Settings
-from atlasrag.core.errors import CapacityExceeded, InvalidInput
+from atlasrag.core.errors import CapacityExceeded, Conflict, InvalidInput, NotFound
 from atlasrag.core.models import DocumentCreate, DocumentInfo, Evidence
 from atlasrag.core.storage import ChunkRow, Database, DocumentRow, JobRow, RevisionRow
 from atlasrag.ingestion.chunking import chunk_sections
@@ -76,7 +77,42 @@ class IngestionService:
             session.add(row)
             session.flush()
             session.add(JobRow(id=str(uuid4()), document_id=row.id, status="queued"))
-            return self.db.info(row)
+            result = self.db.info(row)
+        logger.info("ingestion_admitted", extra={"document_id": str(result.id), "stage": "queued"})
+        return result
+
+    def retry(self, document_id: UUID) -> DocumentInfo:
+        """Re-admit stored bytes without racing an active lease or re-uploading."""
+        now = time.time()
+        with self.db.lock, self.db.sessions.begin() as session:
+            session.execute(
+                update(RevisionRow).where(RevisionRow.id == 1).values(value=RevisionRow.value)
+            )
+            doc = session.get(DocumentRow, str(document_id))
+            if doc is None or doc.status == "deleted":
+                raise NotFound()
+            job = session.scalar(select(JobRow).where(JobRow.document_id == doc.id))
+            if doc.status == "ready":
+                raise Conflict("This document is already indexed.")
+            if job and job.status == "running" and job.lease_until > now:
+                raise Conflict("This document is being processed. Retry after its lease expires.")
+            if not job:
+                job = JobRow(id=str(uuid4()), document_id=doc.id)
+                session.add(job)
+            job.status, job.attempts = "queued", 0
+            job.lease_until, job.lease_token = 0, None
+            doc.status, doc.error = "queued", None
+            result = self.db.info(doc)
+        logger.info("ingestion_retry_requested", extra={"document_id": str(document_id)})
+        return result
+
+    def next_wakeup(self) -> int | None:
+        """Time until a durable retry or crashed worker lease becomes eligible."""
+        with self.db.sessions() as session:
+            due = session.scalar(
+                select(func.min(JobRow.lease_until)).where(JobRow.status.in_(["queued", "running"]))
+            )
+        return None if due is None else max(1, math.ceil(due - time.time()))
 
     def process_one(self) -> bool:
         token, now = str(uuid4()), time.time()
@@ -86,7 +122,8 @@ class IngestionService:
                 update(RevisionRow).where(RevisionRow.id == 1).values(value=RevisionRow.value)
             )
             eligible = or_(
-                JobRow.status == "queued", (JobRow.status == "running") & (JobRow.lease_until < now)
+                (JobRow.status == "queued") & (JobRow.lease_until <= now),
+                (JobRow.status == "running") & (JobRow.lease_until < now),
             )
             job_id = session.scalar(select(JobRow.id).where(eligible).order_by(JobRow.id).limit(1))
             if job_id is None:
@@ -96,7 +133,9 @@ class IngestionService:
                 .where(JobRow.id == job_id, eligible)
                 .values(
                     status="running",
-                    lease_until=now + 180,
+                    # Outlive the hosted function's 300s maximum to prevent overlapping
+                    # processors after redelivery; Docker workers have a 120s limit.
+                    lease_until=now + (360 if self.settings.ingestion_mode == "vercel" else 180),
                     lease_token=token,
                     attempts=JobRow.attempts + 1,
                 )
@@ -119,8 +158,15 @@ class IngestionService:
                 return True
             doc.status = "processing"
             doc_id, raw, format, strategy = doc.id, doc.raw, doc.format, doc.chunking
+            attempt = job.attempts
+        started = time.monotonic()
+        event = {"document_id": doc_id, "job_id": job_id, "attempt": attempt}
+        stage = "extraction"
+        logger.info("ingestion_started", extra={**event, "stage": stage})
         try:
             sections = parse(raw, format)
+            logger.info("ingestion_extracted", extra={**event, "sections": len(sections)})
+            stage = "chunking"
             chunks = chunk_sections(
                 sections, strategy, self.settings.chunk_size, self.settings.chunk_overlap
             )
@@ -135,11 +181,17 @@ class IngestionService:
                 )
                 for c in chunks
             ]
+            if not records:
+                raise InvalidInput("Document contains no indexable passages.")
+            logger.info("ingestion_chunked", extra={**event, "chunks": len(records)})
             if len(records) > self.settings.max_chunks:
                 raise CapacityExceeded()
             evidence = [self.db.evidence(doc, c) for c in records]
+            stage = "vector_index"
             if self.index_writer:
                 self.index_writer(evidence)
+                logger.info("ingestion_vectors_stored", extra=event)
+            stage = "publication"
             with self.db.sessions.begin() as session:
                 session.execute(
                     update(RevisionRow).where(RevisionRow.id == 1).values(value=RevisionRow.value)
@@ -162,10 +214,26 @@ class IngestionService:
                 session.execute(delete(ChunkRow).where(ChunkRow.document_id == doc_id))
                 session.add_all(records)
                 doc.status, doc.error = "ready", None
-                job.status, job.lease_token = "complete", None
+                job.status, job.lease_token, job.lease_until = "complete", None, 0
                 self.db.bump(session)
+            logger.info(
+                "ingestion_indexed",
+                extra={
+                    **event,
+                    "chunks": len(records),
+                    "sections": len(sections),
+                    "duration_ms": round((time.monotonic() - started) * 1000),
+                },
+            )
         except Exception as exc:
-            logger.warning("ingestion_failed", extra={"exception_type": type(exc).__name__})
+            logger.warning(
+                "ingestion_failed",
+                extra={
+                    **event,
+                    "stage": stage,
+                    "exception_type": type(exc).__name__,
+                },
+            )
             with self.db.sessions.begin() as session:
                 job = session.get(JobRow, job_id)
                 doc = session.get(DocumentRow, doc_id)
@@ -174,11 +242,19 @@ class IngestionService:
                     retry = not permanent and job.attempts < 3
                     job.status = "queued" if retry else "failed"
                     doc.status = "queued" if retry else "failed"
-                    doc.error = (
-                        exc.public_message
-                        if isinstance(exc, (InvalidInput, CapacityExceeded))
-                        else "Indexing failed; inspect worker event logs."
+                    job.lease_token = None
+                    job.lease_until = (
+                        time.time() + min(60, 5 * 2 ** (job.attempts - 1)) if retry else 0
                     )
+                    # Parser/limit errors are controlled descriptions. Never expose arbitrary
+                    # provider exception bodies, which may contain URLs or credentials.
+                    reason = (
+                        str(exc) or exc.public_message
+                        if isinstance(exc, (InvalidInput, CapacityExceeded))
+                        else f"{type(exc).__name__}; temporary provider or storage failure"
+                    )
+                    action = "Automatic retry scheduled." if retry else "Use Retry processing."
+                    doc.error = f"{stage}: {reason}. {action}"[:250]
         return True
 
     def drain(self) -> int:

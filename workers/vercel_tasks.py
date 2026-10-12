@@ -28,9 +28,10 @@ def poll(task: Task) -> bool:
     from atlasrag.core.hosting import deployment_settings
     from atlasrag.core.runtime import Runtime
     from atlasrag.core.storage import Database
-    from atlasrag.observability.telemetry import Telemetry
+    from atlasrag.observability.telemetry import Telemetry, configure_logging
 
     settings = deployment_settings()
+    configure_logging(settings.log_level)
     db = Database(settings)
     telemetry = Telemetry(settings.otlp_endpoint)
     runtime = None
@@ -41,6 +42,9 @@ def poll(task: Task) -> bool:
         if processed:
             # Each invocation handles one durable job, then wakes the next one.
             poll.delay()
+        elif (delay := runtime.ingestion.next_wakeup()) is not None:
+            # A transient failure or interrupted lease must wake again without a browser.
+            poll.apply_async(countdown=delay)
         return processed
     except Exception:
         # Provider errors may contain credentials; only a safe error reaches Celery logs.

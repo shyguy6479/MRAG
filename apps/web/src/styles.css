@@ -3540,3 +3540,10 @@ blockquote {
 .trace-table td:last-child .button {
   padding-inline: 5px;
 }
+.ingestion-error {
+  display: block;
+  max-width: 28rem;
+  margin-top: 0.5rem;
+  color: var(--danger, #b42318);
+  overflow-wrap: anywhere;
+}

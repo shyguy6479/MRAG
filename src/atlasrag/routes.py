@@ -89,6 +89,20 @@ async def document(document_id: UUID, request: Request) -> dict[str, object]:
     }
 
 
+@router.post(
+    "/documents/{document_id}/retry",
+    response_model=DocumentInfo,
+    status_code=202,
+    tags=["documents"],
+)
+async def retry_document(document_id: UUID, request: Request) -> DocumentInfo:
+    runtime = request.app.state.runtime
+    result = await asyncio.to_thread(runtime.ingestion.retry, document_id)
+    if request.app.state.settings.ingestion_mode == "vercel":
+        await asyncio.to_thread(dispatch, runtime)
+    return result
+
+
 @router.delete("/documents/{document_id}", status_code=204, tags=["documents"])
 async def delete_document(document_id: UUID, request: Request) -> Response:
     await asyncio.to_thread(request.app.state.db.delete, document_id)

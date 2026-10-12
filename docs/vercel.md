@@ -8,6 +8,13 @@ and the local/Docker entrypoint remains `apps/api/main.py`. The backend service
 root is `.` so its shared source package and benchmark files are bundled, instead
 of losing them by setting its service root to the entrypoint-only `app` directory.
 
+The `app` service's Vercel entrypoint must be **`pyproject.toml`**. The manifest
+exports `app.main:app` and declares `workers.vercel_tasks:app` as a private queue
+subscriber. A direct `app.main:app` service entrypoint deploys the API but skips
+subscriber discovery in Services mode. That left uploads durably queued with
+zero chunks. Verify **two Python functions** in Deployment → Resources:
+`/fastapi` and `/_py_subscribers/workers-vercel__tasks__app`.
+
 The repository root contains `vercel.json`. Import the entire repository with
 Vercel's project root set to `.`. Do not select `apps/web` as the project root or
 set project-wide framework/build overrides: each service owns its build settings.
@@ -56,6 +63,28 @@ failure, that job waits for the next document-list request. Late acknowledgments
 allow Vercel to redeliver interrupted tasks after their queue lease expires.
 No public rewrite or HTTP service binding is needed for the private subscriber.
 Redis remains required for shared caching and rate limits.
+
+Transient indexing failures retain the PostgreSQL job and schedule a durable
+retry after 5 then 10 seconds, with three processing attempts per admission.
+The worker schedules the next wake-up through Vercel Queues, including recovery
+of expired database leases, without requiring an open browser. No request-local
+background task runs ingestion. The database lease outlives the hosted function
+limit so interrupted deliveries cannot overlap active indexing.
+
+**Retry processing** in Knowledge Base or document details calls authenticated
+`POST /api/documents/{id}/retry`. It reuses the stored upload and resets exhausted
+attempts. Active worker leases and already indexed documents return HTTP 409;
+deleted/missing documents return 404. Chunk replacement, Indexed state, job
+completion and corpus revision are committed atomically after extraction and
+any configured vector write. Failed documents never enter retrieval snapshots.
+
+Stage logs include document/job IDs, attempt number, extracted sections, chunk
+counts, publication and elapsed time. Errors expose the failing stage and safe
+classification in the document UI; provider credentials and raw exception bodies
+are never returned. The baseline uses PostgreSQL chunks with BM25 and TF-IDF/SVD
+indexes rebuilt per corpus revision; it does not require an external embedding
+API or Qdrant. When neural/Qdrant is configured, vector upsert must succeed before
+the document is published.
 
 The Vercel Celery adapter is an explicit, locked dependency, with static imports
 in both hosted entrypoints. This keeps it in each function's dependency bundle;
@@ -155,23 +184,27 @@ Verify `/research` refresh serves the SPA, `/assets/*` serves actual assets,
 `/api/system` is rejected, and authorized upload/poll/research/conversation paths
 work. Check `/api/docs` and `/api/openapi.json` with authorization as well.
 
-Local checks: 56 backend tests passed (one external integration test skipped), including prefixed paths, CORS, API-key authorization, production entrypoint
+Local checks: 63 backend tests passed (one external integration test skipped), including prefixed paths, CORS, API-key authorization, production entrypoint
 imports and monitoring label compatibility; Ruff and mypy passed, and the frontend production build passed.
 Vercel CLI 62.4.0 recognized both services and started the Vite service. The Python wheel was built and its API was exercised outside the source checkout.
 The configuration passed the official Vercel JSON schema. Full
 `vercel dev -L` verification stopped because the local file watcher exceeded its open-file limit. The earlier
 missing `uv` prerequisite was resolved using temporary validation tools. The CLI reached `app/main.py` successfully and then correctly rejected absent
-production Redis configuration. A fully configured deployment is still required
-to validate the hosted upload, queue delivery and research workflow.
+production Redis configuration. Hosted ingestion and research were subsequently
+verified against the configured Production project.
 
 On 2026-10-11, Neon Free was connected to Production and migration `0001` was
 applied and verified. On 2026-10-12, Upstash Redis Free (`mrag-redis`, region
 `iad1`) was provisioned and connected to Production only with the `ATLAS` prefix.
 The integration supplies `ATLAS_REDIS_URL`; its REST URL and tokens are not
 substitutes for this Redis connection URL. Credentials remain in Vercel.
-The private `ATLAS_API_KEY` still needs to be entered and saved by the owner,
-followed by a redeploy. End-to-end research and ingestion remain unverified
-until that setup is complete.
+The owner saved the private `ATLAS_API_KEY` and Production is authenticated.
+On 2026-10-12, fixing the service entrypoint to `pyproject.toml` deployed the
+previously missing private queue subscriber. The original stored PDF was processed
+without a new upload: **54 indexed chunks across 27 page sections**. Live Search
+returned page-preserving MLOps passages and Research returned cited GenAI evidence.
+PDF table line wrapping is preserved during context selection and extractive
+answering; source excerpts still pass exact-text grounding verification.
 
 References: [services routing](https://vercel.com/docs/services/routing),
 [bindings](https://vercel.com/docs/services/bindings),

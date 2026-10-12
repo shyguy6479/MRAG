@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type DocumentDetail } from "../../api";
+import { useWorkspace } from "../../hooks/useWorkspace";
 import {
   Badge,
   Button,
@@ -16,12 +17,27 @@ export default function DocumentDialog({
   id: string;
   onClose: () => void;
 }) {
+  const { refresh } = useWorkspace();
+  const [retrying, setRetrying] = useState(false);
   const [data, setData] = useState<DocumentDetail | null>(null),
     [error, setError] = useState(""),
     [tab, setTab] = useState<"chunks" | "metadata">("chunks"),
     [search, setSearch] = useState(""),
     [limit, setLimit] = useState(12),
     [attempt, setAttempt] = useState(0);
+  async function retryProcessing() {
+    setRetrying(true);
+    setError("");
+    try {
+      await api(`/documents/${id}/retry`, { method: "POST" });
+      await refresh();
+      setAttempt((value) => value + 1);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRetrying(false);
+    }
+  }
   useEffect(() => {
     const controller = new AbortController();
     setData(null);
@@ -33,6 +49,27 @@ export default function DocumentDialog({
       });
     return () => controller.abort();
   }, [id, attempt]);
+  useEffect(() => {
+    if (!data || !["queued", "processing"].includes(data.document.status)) return;
+    const controller = new AbortController();
+    let pending = false;
+    const timer = setInterval(async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        setData(await api<DocumentDetail>(`/documents/${id}`, { signal: controller.signal }));
+        setError("");
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") setError((e as Error).message);
+      } finally {
+        pending = false;
+      }
+    }, 2000);
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [id, data?.document.status]);
   const chunks =
     data?.chunks.filter((c) =>
       `${c.section} ${c.text}`.toLowerCase().includes(search.toLowerCase()),
@@ -57,6 +94,11 @@ export default function DocumentDialog({
               {new Set(data.chunks.map((c) => c.section)).size} sections
             </span>
           </div>
+          {["queued", "processing", "failed"].includes(data.document.status) && (
+            <Button disabled={retrying} onClick={retryProcessing}>
+              {retrying ? "Retrying…" : "Retry processing"}
+            </Button>
+          )}
           <Tabs
             value={tab}
             onChange={setTab}

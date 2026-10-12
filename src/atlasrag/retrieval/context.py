@@ -37,9 +37,14 @@ def select_context(hits: list[SearchHit], budget: int, max_chunks: int) -> list[
             # Avoid an incomplete final word. This remains an exact prefix of the chunk.
             text = text.rsplit(" ", 1)[0].rstrip()
             boundaries = list(re.finditer(r"[.!?](?:\s|$)", text))
-            if not boundaries:
+            if boundaries:
+                text = text[: boundaries[-1].start() + 1]
+            elif "\n" in text:
+                # Tables and skill lists often have no sentence punctuation. Keep
+                # complete extracted lines rather than discarding searchable evidence.
+                text = text.rsplit("\n", 1)[0].rstrip()
+            else:
                 continue
-            text = text[: boundaries[-1].start() + 1]
         if len(text) < 40:
             continue
         remaining -= token_bound(text) + overhead

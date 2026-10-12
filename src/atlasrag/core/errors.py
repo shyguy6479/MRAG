@@ -10,6 +10,15 @@ class NotFound(AtlasError):
     public_message = "The requested resource was not found."
 
 
+class Conflict(AtlasError):
+    status_code = 409
+    code = "conflict"
+
+    def __init__(self, message: str) -> None:
+        self.public_message = message
+        super().__init__(message)
+
+
 class InvalidInput(AtlasError):
     status_code = 400
     code = "invalid_input"

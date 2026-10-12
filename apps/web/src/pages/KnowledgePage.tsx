@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Search, Trash2, Upload } from "lucide-react";
+import { FileText, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 import { api, type DocumentInfo } from "../api";
 import { useWorkspace } from "../hooks/useWorkspace";
 import {
@@ -25,6 +25,7 @@ export default function KnowledgePage({
     [format, setFormat] = useState(""),
     [pending, setPending] = useState<DocumentInfo | null>(null),
     [busy, setBusy] = useState(false),
+    [retrying, setRetrying] = useState<string | null>(null),
     [error, setError] = useState("");
   const filtered = documents.filter(
     (doc) =>
@@ -33,6 +34,18 @@ export default function KnowledgePage({
         .includes(query.toLowerCase()) &&
       (!format || doc.format === format),
   );
+  async function retry(doc: DocumentInfo) {
+    setRetrying(doc.id);
+    setError("");
+    try {
+      await api(`/documents/${doc.id}/retry`, { method: "POST" });
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRetrying(null);
+    }
+  }
   async function remove() {
     if (!pending) return;
     setBusy(true);
@@ -158,6 +171,7 @@ export default function KnowledgePage({
                   <td className="mono">{doc.chunk_count}</td>
                   <td>
                     <StatusBadge status={doc.status} />
+                    {doc.error && <small className="ingestion-error">{doc.error}</small>}
                   </td>
                   <td>
                     {new Date(doc.created_at).toLocaleDateString(undefined, {
@@ -166,6 +180,12 @@ export default function KnowledgePage({
                     })}
                   </td>
                   <td>
+                    {["queued", "processing", "failed"].includes(doc.status) && (
+                      <Button disabled={retrying === doc.id} onClick={() => retry(doc)}>
+                        <RefreshCw size={14} />
+                        {retrying === doc.id ? "Retrying…" : "Retry processing"}
+                      </Button>
+                    )}
                     <IconButton
                       label={`Delete ${doc.title}`}
                       onClick={() => setPending(doc)}

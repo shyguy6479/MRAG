@@ -25,6 +25,20 @@ class JsonFormatter(logging.Formatter):
                 "logger": record.name,
                 "request_id": request_id_var.get(),
                 "exception_type": getattr(record, "exception_type", None),
+                **{
+                    field: getattr(record, field)
+                    for field in (
+                        "document_id",
+                        "job_id",
+                        "stage",
+                        "attempt",
+                        "chunks",
+                        "sections",
+                        "duration_ms",
+                        "task_id",
+                    )
+                    if hasattr(record, field)
+                },
             }
         )
 
