@@ -4,7 +4,7 @@
     "app": {
       "root": ".",
       "framework": "fastapi",
-      "entrypoint": "app.main:app",
+      "entrypoint": "pyproject.toml",
       "functions": {
         "app/main.py": {
           "maxDuration": 60,

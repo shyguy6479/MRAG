@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from vercel.integrations.celery import install_vercel_celery_integration
 
 # The runtime activates Celery before importing this entrypoint; retain its adapter.
-install_vercel_celery_integration()
+install_vercel_celery_integration(register_queues=False)
 
 # Vercel installs dependencies separately from the repository's src-layout package.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
